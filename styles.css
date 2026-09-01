@@ -1,0 +1,656 @@
+/* ==========================================================================
+   Alfa Materiales Eldorado — hoja de estilos
+   Paleta: naranja obra + gris hormigón + rojo ladrillo + negro carbón
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap');
+
+:root {
+  /* Color */
+  --color-fondo: #efece6;
+  --color-superficie: #ffffff;
+  --color-carbon: #201d1a;
+  --color-carbon-suave: #322d28;
+  --color-gris: #736c62;
+  --color-gris-claro: #d9d3c8;
+  --color-naranja: #e85d04;
+  --color-naranja-oscuro: #b84800;
+  --color-rojo: #b3261e;
+  --color-rojo-oscuro: #8f1e18;
+  --color-texto: #201d1a;
+  --color-texto-invertido: #f6f3ee;
+
+  /* Tipografía */
+  --fuente-titulo: 'Barlow Condensed', sans-serif;
+  --fuente-texto: 'Barlow', sans-serif;
+
+  /* Layout */
+  --ancho-sidebar: 260px;
+  --radio: 3px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--fuente-texto);
+  color: var(--color-texto);
+  background-color: var(--color-fondo);
+  min-height: 100vh;
+}
+
+body > div {
+  display: grid;
+  grid-template-columns: var(--ancho-sidebar) 1fr;
+  min-height: 100vh;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+button {
+  font-family: var(--fuente-texto);
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+/* ==========================================================================
+   Sidebar
+   ========================================================================== */
+
+.columna-relleno {
+  background-color: var(--color-carbon);
+  color: var(--color-texto-invertido);
+  display: flex;
+  flex-direction: column;
+  padding: 28px 20px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.columna-relleno header {
+  margin-bottom: 36px;
+}
+
+.logo {
+  font-family: var(--fuente-titulo);
+  font-weight: 700;
+  font-size: 1.9rem;
+  letter-spacing: 0.5px;
+  color: var(--color-naranja);
+  margin: 0;
+  border-left: 4px solid var(--color-naranja);
+  padding-left: 12px;
+}
+
+.columna-relleno nav {
+  flex: 1;
+}
+
+.columna-relleno nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.boton-menu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 11px 14px;
+  border-radius: var(--radio);
+  color: var(--color-texto-invertido);
+  font-size: 1rem;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.boton-menu i {
+  font-size: 1.05rem;
+  color: var(--color-gris-claro);
+}
+
+.boton-categoria:hover {
+  background-color: var(--color-carbon-suave);
+}
+
+.boton-categoria.active {
+  background-color: var(--color-naranja);
+  color: var(--color-carbon);
+  font-weight: 600;
+}
+
+.boton-categoria.active i {
+  color: var(--color-carbon);
+}
+
+.boton-volver {
+  color: var(--color-gris-claro);
+}
+
+.boton-volver:hover {
+  color: var(--color-texto-invertido);
+}
+
+.boton-carrito {
+  justify-content: space-between;
+}
+
+.boton-carrito:hover {
+  background-color: var(--color-carbon-suave);
+}
+
+.boton-carrito.active {
+  background-color: var(--color-naranja);
+  color: var(--color-carbon);
+}
+
+.numerito {
+  background-color: var(--color-rojo);
+  color: var(--color-texto-invertido);
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.texto-footer {
+  color: var(--color-gris);
+  font-size: 0.78rem;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-carbon-suave);
+}
+
+/* ==========================================================================
+   Contenido principal
+   ========================================================================== */
+
+main {
+  padding: 40px 48px;
+}
+
+.titulo {
+  font-family: var(--fuente-titulo);
+  font-weight: 700;
+  font-size: 2.1rem;
+  color: var(--color-carbon);
+  margin: 0 0 28px 0;
+}
+.buscador {
+  margin-bottom: 20px;
+}
+
+.buscador-input {
+  width: 100%;
+  max-width: 360px;
+  padding: 11px 14px;
+  border: 1px solid var(--color-gris-claro);
+  border-radius: var(--radio);
+  font-family: var(--fuente-texto);
+  font-size: 0.95rem;
+  color: var(--color-texto);
+  background-color: var(--color-superficie);
+  transition: border-color 0.15s ease;
+}
+
+.buscador-input:focus-visible {
+  outline: none;
+  border-color: var(--color-naranja);
+}
+
+.buscador-input::placeholder {
+  color: var(--color-gris);
+}
+
+/* Grilla de productos */
+
+.contenedor-productos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.producto {
+  background-color: var(--color-superficie);
+  border: 1px solid var(--color-gris-claro);
+  border-radius: var(--radio);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.producto:hover {
+  border-color: var(--color-naranja);
+  transform: translateY(-2px);
+}
+
+.producto-imagen {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  background-color: var(--color-gris-claro);
+  display: block;
+}
+
+.producto-detalles {
+  padding: 14px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.producto-nombre {
+  font-family: var(--fuente-titulo);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--color-carbon);
+  margin: 0;
+}
+
+.producto-precio {
+  color: var(--color-gris);
+  font-weight: 500;
+  margin: 0;
+}
+
+/* Selector de cantidad dentro de la tarjeta de producto */
+
+.producto-cantidad {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid var(--color-gris-claro);
+  border-radius: var(--radio);
+  overflow: hidden;
+  align-self: flex-start;
+}
+
+.cantidad-btn {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-carbon);
+  background-color: var(--color-fondo);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.cantidad-btn:hover {
+  background-color: var(--color-naranja);
+  color: var(--color-texto-invertido);
+}
+
+.cantidad-valor {
+  width: 48px;
+  height: 34px;
+  border: none;
+  background-color: var(--color-superficie);
+  text-align: center;
+  font-family: var(--fuente-texto);
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-carbon);
+}
+
+.cantidad-valor:focus-visible {
+  outline: 2px solid var(--color-naranja);
+  outline-offset: -2px;
+}
+
+/* Ocultar las flechitas nativas del input number: ya tenemos los botones −/+ */
+.cantidad-valor::-webkit-outer-spin-button,
+.cantidad-valor::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.cantidad-valor {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.producto-boton {
+  background-color: var(--color-naranja);
+  color: var(--color-texto-invertido);
+  font-weight: 600;
+  padding: 10px 14px;
+  border-radius: var(--radio);
+  transition: background-color 0.15s ease;
+}
+
+.producto-boton:hover {
+  background-color: var(--color-naranja-oscuro);
+}
+
+/* ==========================================================================
+   Carrito
+   ========================================================================== */
+
+.contenedor-carrito {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.carrito-vacio {
+  color: var(--color-gris);
+  font-size: 1.05rem;
+}
+
+.carrito-productos {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.carrito-producto {
+  background-color: var(--color-superficie);
+  border: 1px solid var(--color-gris-claro);
+  border-radius: var(--radio);
+  padding: 14px 18px;
+  display: grid;
+  grid-template-columns: 64px 2fr 1fr 1fr 1fr auto;
+  align-items: center;
+  gap: 18px;
+}
+
+.carrito-producto img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  background-color: var(--color-gris-claro);
+  border-radius: var(--radio);
+}
+
+.carrito-producto small {
+  display: block;
+  color: var(--color-gris);
+  font-size: 0.72rem;
+  margin-bottom: 2px;
+}
+
+.carrito-producto-titulo h3 {
+  font-family: var(--fuente-titulo);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-carbon);
+  margin: 0;
+}
+
+.carrito-producto-cantidad p,
+.carrito-producto-precio p {
+  margin: 0;
+  color: var(--color-texto);
+  font-weight: 500;
+}
+
+.carrito-producto-subtotal p {
+  margin: 0;
+  color: var(--color-naranja-oscuro);
+  font-weight: 700;
+}
+
+.carrito-producto-eliminar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-rojo);
+  border: 1px solid var(--color-rojo);
+  padding: 8px 12px;
+  border-radius: var(--radio);
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.carrito-producto-eliminar:hover {
+  background-color: var(--color-rojo);
+  color: var(--color-texto-invertido);
+}
+
+/* Acciones del carrito */
+
+.carrito-acciones {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  border-top: 1px solid var(--color-gris-claro);
+  padding-top: 20px;
+}
+
+.carrito-acciones-vaciar {
+  color: var(--color-rojo-oscuro);
+  font-weight: 600;
+  padding: 10px 4px;
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.15s ease;
+}
+
+.carrito-acciones-vaciar:hover {
+  border-color: var(--color-rojo-oscuro);
+}
+
+/* Resumen: total general + aviso de envío */
+
+.carrito-resumen {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+
+.carrito-total {
+  font-family: var(--fuente-titulo);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--color-carbon);
+  margin: 0;
+}
+
+.carrito-envio {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* Envío incluido: mensaje positivo, en naranja */
+.carrito-envio.incluido {
+  color: var(--color-naranja-oscuro);
+}
+
+/* Falta poco para el envío gratis: aviso neutro, en gris */
+.carrito-envio.cerca {
+  color: var(--color-gris);
+}
+
+/* Todavía paga envío: aviso de costo, en rojo */
+.carrito-envio.pago {
+  color: var(--color-rojo);
+}
+
+.carrito-acciones-derecha button {
+  background-color: var(--color-naranja);
+  color: var(--color-texto-invertido);
+  font-weight: 700;
+  padding: 12px 26px;
+  border-radius: var(--radio);
+  font-size: 1rem;
+  transition: background-color 0.15s ease;
+}
+
+.carrito-acciones-derecha button:empty::after {
+  content: "Finalizar compra";
+}
+
+.carrito-acciones-derecha button:hover {
+  background-color: var(--color-naranja-oscuro);
+}
+
+/* ==========================================================================
+   Accesibilidad y foco
+   ========================================================================== */
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--color-naranja);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 860px) {
+  body > div {
+    grid-template-columns: 1fr;
+  }
+
+  .columna-relleno {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .columna-relleno header {
+    margin-bottom: 0;
+  }
+
+  .columna-relleno nav ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .texto-footer {
+    display: none;
+  }
+
+  main {
+    padding: 28px 20px;
+  }
+
+  .carrito-producto {
+    grid-template-columns: 56px 1fr;
+    grid-template-areas:
+      "img titulo"
+      "cantidad cantidad"
+      "precio precio"
+      "subtotal subtotal"
+      "eliminar eliminar";
+    row-gap: 8px;
+  }
+
+  .carrito-acciones {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .carrito-resumen {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+/* ==========================================================================
+   Contacto
+   ========================================================================== */
+
+.contacto-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.contacto-info {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.contacto-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background-color: var(--color-superficie);
+  border: 1px solid var(--color-gris-claro);
+  border-radius: var(--radio);
+  padding: 16px 18px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.contacto-item:hover {
+  border-color: var(--color-naranja);
+  transform: translateY(-2px);
+}
+
+.contacto-item i {
+  font-size: 1.5rem;
+  color: var(--color-naranja);
+  flex-shrink: 0;
+}
+
+.contacto-item div {
+  display: flex;
+  flex-direction: column;
+}
+
+.contacto-item strong {
+  font-family: var(--fuente-titulo);
+  font-size: 1.05rem;
+  color: var(--color-carbon);
+}
+
+.contacto-item span {
+  color: var(--color-gris);
+  font-size: 0.9rem;
+}
+
+.contacto-mapa {
+  min-height: 320px;
+  border: 1px solid var(--color-gris-claro);
+  border-radius: var(--radio);
+  overflow: hidden;
+}
+
+.contacto-mapa iframe {
+  display: block;
+}
+
+@media (max-width: 860px) {
+  .contacto-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .contacto-mapa {
+    min-height: 260px;
+  }
+}

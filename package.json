@@ -1,0 +1,20 @@
+{
+  "name": "alfa-materiales",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "node -e 'console.log(\"Build complete\")'",
+    "lint": "eslint firestore.rules"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "firebase": "^12.19.0"
+  },
+  "devDependencies": {
+    "@firebase/eslint-plugin-security-rules": "^0.0.2",
+    "eslint": "^10.11.0"
+  }
+}

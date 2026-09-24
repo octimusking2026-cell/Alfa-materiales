@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "Producto": {
+      "title": "Producto",
+      "description": "Producto del catálogo de materiales de construcción",
+      "type": "object",
+      "properties": {
+        "nombre": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150,
+          "description": "Nombre o descripción del producto"
+        },
+        "precio": {
+          "type": "number",
+          "description": "Precio unitario en ARS"
+        },
+        "categoria": {
+          "type": "string",
+          "enum": ["ladrillos", "aridos", "otros"],
+          "description": "Categoría del producto"
+        },
+        "imagen": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "Ruta o URL de la imagen del producto"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Fecha y hora de creación"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Fecha y hora de última actualización"
+        }
+      },
+      "required": ["nombre", "precio", "categoria", "imagen"]
+    },
+    "Pedido": {
+      "title": "Pedido",
+      "description": "Pedido de materiales generado desde el carrito de compras",
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "description": "Lista de productos seleccionados con cantidades y precios"
+        },
+        "total": {
+          "type": "number",
+          "description": "Monto total del pedido en ARS"
+        },
+        "clienteNombre": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Nombre de contacto del cliente opcional"
+        },
+        "clienteTelefono": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Teléfono de contacto del cliente opcional"
+        },
+        "clienteDireccion": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Dirección de entrega"
+        },
+        "estado": {
+          "type": "string",
+          "enum": ["pendiente", "en_camino", "completado", "cancelado"],
+          "description": "Estado del pedido"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Fecha y hora de realización del pedido"
+        }
+      },
+      "required": ["items", "total", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/productos/{productoId}": {
+      "schema": "Producto",
+      "description": "Catálogo público de materiales de construcción administrable por el usuario logueado"
+    },
+    "/pedidos/{pedidoId}": {
+      "schema": "Pedido",
+      "description": "Colección de pedidos recibidos, creable públicamente y legible solo por el administrador"
+    }
+  }
+}

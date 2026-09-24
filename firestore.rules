@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == 'octimusking2026@gmail.com';
+    }
+
+    // Validación de Producto
+    function isValidProduct(data) {
+      return data.keys().hasAll(['nombre', 'precio', 'categoria', 'imagen']) &&
+        data.keys().hasOnly(['nombre', 'precio', 'categoria', 'imagen', 'createdAt', 'updatedAt']) &&
+        data.nombre is string && data.nombre.size() > 0 && data.nombre.size() <= 150 &&
+        data.precio is number && data.precio >= 0 &&
+        data.categoria is string && data.categoria in ['ladrillos', 'aridos', 'otros'] &&
+        data.imagen is string && data.imagen.size() > 0 && data.imagen.size() <= 1000 &&
+        (!('createdAt' in data) || data.createdAt is timestamp) &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    // Validación de Pedido
+    function isValidPedido(data) {
+      return data.keys().hasAll(['items', 'total', 'createdAt']) &&
+        data.keys().hasOnly(['items', 'total', 'createdAt', 'clienteNombre', 'clienteTelefono', 'clienteDireccion', 'estado']) &&
+        data.items is list && data.items.size() > 0 && data.items.size() <= 50 &&
+        data.total is number && data.total >= 0 &&
+        data.createdAt is timestamp &&
+        (!('clienteNombre' in data) || (data.clienteNombre is string && data.clienteNombre.size() <= 100)) &&
+        (!('clienteTelefono' in data) || (data.clienteTelefono is string && data.clienteTelefono.size() <= 50)) &&
+        (!('clienteDireccion' in data) || (data.clienteDireccion is string && data.clienteDireccion.size() <= 200)) &&
+        (!('estado' in data) || (data.estado is string && data.estado in ['pendiente', 'en_camino', 'completado', 'cancelado']));
+    }
+
+    // Colección: Productos
+    // Cualquiera puede leer, solo el administrador con email específico puede crear/editar/borrar
+    match /productos/{productoId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidId(productoId) && isValidProduct(incoming());
+      allow update: if isAdmin() && isValidId(productoId) && isValidProduct(incoming());
+      allow delete: if isAdmin() && isValidId(productoId);
+    }
+
+    // Colección: Pedidos
+    // Cualquiera puede crear (sitio público), nadie puede leer/editar/borrar salvo el administrador con email específico
+    match /pedidos/{pedidoId} {
+      allow create: if isValidId(pedidoId) && isValidPedido(incoming());
+      allow get, list: if isAdmin();
+      allow update: if isAdmin() && isValidId(pedidoId) && isValidPedido(incoming());
+      allow delete: if isAdmin() && isValidId(pedidoId);
+    }
+  }
+}

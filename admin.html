@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administración — Alfa Materiales Eldorado</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="fotos/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="fotos/favicon.png">
+    <link rel="apple-touch-icon" href="fotos/apple-touch-icon.png">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="admin-body">
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside class="columna-relleno">
+            <header>
+                <h1 class="logo">Alfa Materiales</h1>
+                <div class="admin-badge-tag"><i class="bi bi-shield-lock-fill"></i> Panel de Control</div>
+            </header>
+            <nav>
+                <ul id="admin-nav-logged-out">
+                    <li>
+                        <a class="boton-menu boton-volver" href="index.html"><i class="bi bi-arrow-left"></i>Volver a la tienda</a>
+                    </li>
+                </ul>
+
+                <ul id="admin-nav-logged-in" style="display: none;">
+                    <li>
+                        <button class="boton-menu boton-tab active" data-tab="tab-productos">
+                            <i class="bi bi-box-seam"></i>Productos
+                        </button>
+                    </li>
+                    <li>
+                        <button class="boton-menu boton-tab" data-tab="tab-pedidos">
+                            <i class="bi bi-receipt"></i>Pedidos
+                            <span class="numerito numerito-pedidos" id="contador-pedidos">0</span>
+                        </button>
+                    </li>
+                    <li style="margin-top: 18px; border-top: 1px solid var(--color-carbon-suave); padding-top: 12px;">
+                        <a class="boton-menu boton-volver" href="index.html"><i class="bi bi-arrow-left"></i>Ver Tienda</a>
+                    </li>
+                    <li>
+                        <button class="boton-menu boton-logout" id="btn-cerrar-sesion">
+                            <i class="bi bi-box-arrow-right"></i>Cerrar sesión
+                        </button>
+                    </li>
+                </ul>
+            </nav>
+            <footer class="texto-footer">
+                <div id="admin-user-pill" style="display: none; margin-bottom: 10px; color: var(--color-naranja); font-size: 0.8rem; word-break: break-all;">
+                    <i class="bi bi-person-check-fill"></i> <span id="admin-user-email"></span>
+                </div>
+                © 2003 Alfa Materiales
+            </footer>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="admin-main">
+            <!-- Toast / Notification container -->
+            <div id="admin-notificacion" class="admin-toast" style="display: none;"></div>
+
+            <!-- VIEW: LOGIN (when user is not authenticated) -->
+            <section id="vista-login" class="admin-card-auth">
+                <div class="auth-header">
+                    <div class="auth-icon"><i class="bi bi-shield-lock"></i></div>
+                    <h2>Acceso de Administrador</h2>
+                    <p>Ingreso exclusivo para administración de Alfa Materiales.</p>
+                </div>
+
+                <div id="login-error-msg" class="alerta-error" style="display: none;"></div>
+                <div id="login-success-msg" class="alerta-exito" style="display: none;"></div>
+
+                <form id="form-login" class="auth-form">
+                    <div class="form-grupo">
+                        <label for="login-email">Email de Administrador</label>
+                        <input type="email" id="login-email" placeholder="correo@ejemplo.com" required autocomplete="username">
+                    </div>
+                    <div class="form-grupo">
+                        <label for="login-password">Contraseña</label>
+                        <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="boton-primario" id="btn-submit-login">
+                        <i class="bi bi-box-arrow-in-right"></i> Iniciar Sesión con Contraseña
+                    </button>
+                    <button type="button" class="boton-google-auth" id="btn-google-login">
+                        <i class="bi bi-google"></i> Ingresar con Google
+                    </button>
+                </form>
+
+                <div class="auth-footer-note">
+                    <p><small><i class="bi bi-shield-check"></i> Acceso protegido por autenticación Firebase.</small></p>
+                    <button type="button" class="boton-secundario-link" id="btn-reset-password">
+                        <i class="bi bi-envelope-at"></i> ¿Olvidaste tu contraseña? Enviar enlace de restablecimiento
+                    </button>
+                </div>
+            </section>
+
+            <!-- VIEW: ADMIN DASHBOARD (when user is logged in) -->
+            <div id="vista-dashboard" style="display: none;">
+                
+                <!-- TAB 1: PRODUCTOS -->
+                <section id="tab-productos" class="admin-tab-content">
+                    <div class="admin-header-row">
+                        <div>
+                            <h2 class="titulo" style="margin-bottom: 6px;">Gestión de Productos</h2>
+                            <p class="subtitulo-admin">Modificá el catálogo en tiempo real. Los cambios impactan inmediatamente en la tienda.</p>
+                        </div>
+                        <div class="admin-header-actions">
+                            <button class="boton-accion-naranja" id="btn-abrir-modal-nuevo">
+                                <i class="bi bi-plus-circle"></i> Nuevo Producto
+                            </button>
+                            <button class="boton-accion-secundario" id="btn-sembrar-catalogo" title="Carga el catálogo completo inicial en Firestore">
+                                <i class="bi bi-cloud-arrow-up"></i> Sincronizar catálogo base
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filter & Search Toolbar -->
+                    <div class="admin-toolbar">
+                        <div class="buscador-admin">
+                            <i class="bi bi-search"></i>
+                            <input type="text" id="admin-buscar-producto" placeholder="Buscar por nombre...">
+                        </div>
+                        <div class="filtros-categoria-admin">
+                            <label><i class="bi bi-funnel"></i> Categoría:</label>
+                            <select id="admin-filtro-categoria">
+                                <option value="todas">Todas las categorías</option>
+                                <option value="ladrillos">Ladrillos</option>
+                                <option value="aridos">Áridos y Aglomerantes</option>
+                                <option value="otros">Otros</option>
+                            </select>
+                        </div>
+                        <div class="contador-admin">
+                            <span id="admin-total-productos">0</span> productos
+                        </div>
+                    </div>
+
+                    <!-- Products Table -->
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin" id="tabla-productos">
+                            <thead>
+                                <tr>
+                                    <th style="width: 70px;">Imagen</th>
+                                    <th>Nombre del Producto</th>
+                                    <th style="width: 170px;">Categoría</th>
+                                    <th style="width: 150px;">Precio (ARS)</th>
+                                    <th style="width: 160px; text-align: right;">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cuerpo-tabla-productos">
+                                <tr>
+                                    <td colspan="5" style="text-align: center; padding: 30px;">
+                                        <div class="cargando-spinner"><i class="bi bi-arrow-repeat spin"></i> Cargando productos...</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- TAB 2: PEDIDOS (SOLO LECTURA) -->
+                <section id="tab-pedidos" class="admin-tab-content" style="display: none;">
+                    <div class="admin-header-row">
+                        <div>
+                            <h2 class="titulo" style="margin-bottom: 6px;">Pedidos Recibidos</h2>
+                            <p class="subtitulo-admin">Registro de solo lectura ordenado del más nuevo al más viejo.</p>
+                        </div>
+                        <div class="admin-header-actions">
+                            <button class="boton-accion-secundario" id="btn-recargar-pedidos">
+                                <i class="bi bi-arrow-clockwise"></i> Actualizar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="admin-toolbar">
+                        <div class="buscador-admin">
+                            <i class="bi bi-search"></i>
+                            <input type="text" id="admin-buscar-pedidos" placeholder="Buscar por cliente o producto...">
+                        </div>
+                        <div class="contador-admin">
+                            <span id="admin-pedidos-count">0</span> pedidos registrados
+                        </div>
+                    </div>
+
+                    <!-- Orders Container (Cards / Detailed records) -->
+                    <div id="contenedor-pedidos" class="contenedor-pedidos-admin">
+                        <div style="text-align: center; padding: 40px;">
+                            <div class="cargando-spinner"><i class="bi bi-arrow-repeat spin"></i> Cargando pedidos...</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL: CREAR / EDITAR PRODUCTO -->
+    <div id="modal-producto" class="admin-modal" style="display: none;">
+        <div class="modal-contenido">
+            <div class="modal-cabecera">
+                <h3 id="modal-titulo"><i class="bi bi-box-seam"></i> Nuevo Producto</h3>
+                <button type="button" class="modal-cerrar" id="btn-cerrar-modal">&times;</button>
+            </div>
+            <form id="form-producto" class="modal-cuerpo">
+                <input type="hidden" id="prod-id">
+
+                <div class="form-grupo">
+                    <label for="prod-nombre">Nombre del Producto <span class="requerido">*</span></label>
+                    <input type="text" id="prod-nombre" required placeholder="Ej: Ladrillo hueco 12×18×25 Liviano" maxlength="150">
+                </div>
+
+                <div class="form-fila">
+                    <div class="form-grupo">
+                        <label for="prod-precio">Precio en ARS ($) <span class="requerido">*</span></label>
+                        <input type="number" id="prod-precio" required min="0" step="1" placeholder="Ej: 370">
+                    </div>
+                    <div class="form-grupo">
+                        <label for="prod-categoria">Categoría <span class="requerido">*</span></label>
+                        <select id="prod-categoria" required>
+                            <option value="ladrillos">Ladrillos</option>
+                            <option value="aridos">Áridos y Aglomerantes</option>
+                            <option value="otros">Otros</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-grupo">
+                    <label for="prod-file">Foto del Producto (Subir a Firebase Storage) <span class="requerido">*</span></label>
+                    <div class="subida-archivo-wrap">
+                        <input type="file" id="prod-file" accept="image/*" class="input-archivo-estilizado">
+                        <input type="hidden" id="prod-imagen" required>
+                    </div>
+
+                    <!-- Progreso de subida a Storage en carpeta productos/ -->
+                    <div id="progreso-subida-wrap" class="barra-progreso-contenedor" style="display: none;">
+                        <div class="progreso-info">
+                            <span id="progreso-subida-texto"><i class="bi bi-cloud-arrow-up"></i> Subiendo a productos/...</span>
+                            <span id="progreso-subida-porcentaje">0%</span>
+                        </div>
+                        <div class="barra-progreso-fondo">
+                            <div id="progreso-subida-fill" class="barra-progreso-fill" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview thumbnail -->
+                <div class="preview-imagen-contenedor">
+                    <small>Vista previa de imagen:</small>
+                    <div class="preview-box">
+                        <img id="img-preview" src="fotos/favicon-32.png" alt="Vista previa">
+                    </div>
+                </div>
+
+                <div class="modal-pie">
+                    <button type="button" class="boton-cancelar" id="btn-cancelar-modal">Cancelar</button>
+                    <button type="submit" class="boton-guardar" id="btn-guardar-producto">
+                        <i class="bi bi-check-circle"></i> Guardar Producto
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Script modular para administración con Firebase -->
+    <script type="module" src="admin.js"></script>
+</body>
+</html>

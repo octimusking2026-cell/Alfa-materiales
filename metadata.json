@@ -1,0 +1,8 @@
+{
+  "name": "Alfa Materiales de Construcción - Eldorado",
+  "description": "Venta de materiales de construcción en Eldorado. Ladrillos, áridos, aglomerantes y todo lo que necesitas para tu obra al mejor precio.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,31 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Función auxiliar para verificar si el usuario es el administrador
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == 'octimusking2026@gmail.com';
+    }
+
+    // Carpeta productos/: imágenes del catálogo de Alfa Materiales
+    match /productos/{allPaths=**} {
+      // Lectura pública: cualquier visitante puede ver las fotos de los productos
+      allow read: if true;
+
+      // Creación / Actualización: solo el administrador autenticado,
+      // validando tipo de contenido imagen y tamaño máximo 15MB
+      allow write: if isAdmin()
+                   && request.resource.size < 15 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+
+      // Eliminación: solo el administrador
+      allow delete: if isAdmin();
+    }
+
+    // Denegar todo acceso por defecto a cualquier otra ruta o archivo
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

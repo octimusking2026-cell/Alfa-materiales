@@ -15,7 +15,7 @@ import {
   getStorage 
 } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyDALHXJ6Ip17vp1iSDpbLuhbvWGqNG6cos",
   authDomain: "alfa-materiales.firebaseapp.com",
   projectId: "alfa-materiales",

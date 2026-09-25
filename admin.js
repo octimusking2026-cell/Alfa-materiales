@@ -485,7 +485,7 @@ async function subirImagenAStorage(file, onProgress, onStatusText) {
         if (error.code === 'storage/unauthorized') {
           msg = "No tenés permisos para subir archivos en Storage.";
         } else if (error.code === 'storage/bucket-not-found' || error.message.includes('does not exist')) {
-          msg = "El almacenamiento de Firebase Storage aún no está activado en tu consola. Activá Firebase Storage en: https://console.firebase.google.com/project/orbital-virtue-bds98/storage";
+          msg = "El almacenamiento de Firebase Storage aún no está activado en tu consola. Activá Firebase Storage en: https://console.firebase.google.com/project/alfa-materiales/storage";
         }
         reject(new Error(msg));
       },

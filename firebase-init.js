@@ -15,17 +15,14 @@ import {
   getStorage 
 } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js';
 
-export const firebaseConfig = {
-  projectId: "orbital-virtue-bds98",
-  appId: "1:1085784784323:web:7a8939c2caf92ee1cc5176",
-  apiKey: "AIzaSyB8AWJJ4dIO8RR3V2H9_CdDCIU_0HXz2yw",
-  authDomain: "orbital-virtue-bds98.firebaseapp.com",
-  firestoreDatabaseId: "ai-studio-alfamateriales-e68260a3-a595-4e76-af5a-11b12512991b",
-  storageBucket: "orbital-virtue-bds98.firebasestorage.app",
-  messagingSenderId: "1085784784323",
-  measurementId: "",
-  oAuthClientId: "1085784784323-ter0qa41q3fgdbk7580smkfqhkj7bepc.apps.googleusercontent.com",
-  recaptchaSiteKey: ""
+const firebaseConfig = {
+  apiKey: "AIzaSyDALHXJ6Ip17vp1iSDpbLuhbvWGqNG6cos",
+  authDomain: "alfa-materiales.firebaseapp.com",
+  projectId: "alfa-materiales",
+  storageBucket: "alfa-materiales.firebasestorage.app",
+  messagingSenderId: "453023199357",
+  appId: "1:453023199357:web:fc5ce0e8f063dfc0afc114",
+  measurementId: "G-QLEX9FF15J"
 };
 
 export const ADMIN_EMAIL = "octimusking2026@gmail.com";

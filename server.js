@@ -6,7 +6,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+// Dev server in AI Studio must listen strictly on port 3000
+const PORT = 3000;
 
 // Serve static assets and files from the root directory
 app.use(express.static(__dirname, { extensions: ['html'] }));

@@ -20,7 +20,10 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return request.auth != null && request.auth.token.email == 'octimusking2026@gmail.com';
+      return request.auth != null && (
+        request.auth.token.get('admin', false) == true ||
+        ('email' in request.auth.token && request.auth.token.email.lower() in ['octimusking2026@gmail.com', 'jhonnytumach@gmail.com'])
+      );
     }
 
     // Validación de Producto
@@ -38,14 +41,27 @@ service cloud.firestore {
     // Validación de Pedido
     function isValidPedido(data) {
       return data.keys().hasAll(['items', 'total', 'createdAt']) &&
-        data.keys().hasOnly(['items', 'total', 'createdAt', 'clienteNombre', 'clienteTelefono', 'clienteDireccion', 'estado']) &&
-        data.items is list && data.items.size() > 0 && data.items.size() <= 50 &&
+        data.keys().hasOnly(['items', 'subtotal', 'costoEnvio', 'total', 'clienteNombre', 'clienteTelefono', 'clienteDireccion', 'tipoDestino', 'departamento', 'localidad', 'direccion', 'referencia', 'zonaEnvio', 'estado', 'numeroPedido', 'codigoPedido', 'envioACoordinar', 'createdAt', 'updatedAt']) &&
+        data.items is list && data.items.size() > 0 && data.items.size() <= 100 &&
         data.total is number && data.total >= 0 &&
+        (!('subtotal' in data) || (data.subtotal is number && data.subtotal >= 0)) &&
+        (!('costoEnvio' in data) || (data.costoEnvio is number && data.costoEnvio >= 0)) &&
+        (!('envioACoordinar' in data) || data.envioACoordinar is bool) &&
+        (!('clienteNombre' in data) || (data.clienteNombre is string && data.clienteNombre.size() >= 2 && data.clienteNombre.size() <= 100)) &&
+        (!('clienteTelefono' in data) || (data.clienteTelefono is string && data.clienteTelefono.size() >= 6 && data.clienteTelefono.size() <= 50)) &&
+        (!('clienteDireccion' in data) || (data.clienteDireccion is string && data.clienteDireccion.size() >= 3 && data.clienteDireccion.size() <= 300)) &&
+        (!('tipoDestino' in data) || (data.tipoDestino is string && data.tipoDestino.size() <= 50)) &&
+        (!('departamento' in data) || (data.departamento is string && data.departamento.size() <= 100)) &&
+        (!('localidad' in data) || (data.localidad is string && data.localidad.size() <= 100)) &&
+        (!('direccion' in data) || (data.direccion is string && data.direccion.size() <= 200)) &&
+        (!('referencia' in data) || (data.referencia is string && data.referencia.size() <= 300)) &&
+        (!('zonaEnvio' in data) || (data.zonaEnvio is string && data.zonaEnvio.size() <= 100)) &&
+        (!('numeroPedido' in data) || (data.numeroPedido is number && data.numeroPedido > 0)) &&
+        (!('codigoPedido' in data) || (data.codigoPedido is string && data.codigoPedido.size() >= 5 && data.codigoPedido.size() <= 30)) &&
+        (!('estado' in data) || (data.estado is string && data.estado in ['pendiente', 'confirmado', 'preparando', 'enviado', 'entregado', 'cancelado', 'en_camino', 'completado'])) &&
         data.createdAt is timestamp &&
-        (!('clienteNombre' in data) || (data.clienteNombre is string && data.clienteNombre.size() <= 100)) &&
-        (!('clienteTelefono' in data) || (data.clienteTelefono is string && data.clienteTelefono.size() <= 50)) &&
-        (!('clienteDireccion' in data) || (data.clienteDireccion is string && data.clienteDireccion.size() <= 200)) &&
-        (!('estado' in data) || (data.estado is string && data.estado in ['pendiente', 'en_camino', 'completado', 'cancelado']));
+        data.createdAt == request.time &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
     // Colección: Productos
@@ -55,6 +71,31 @@ service cloud.firestore {
       allow create: if isAdmin() && isValidId(productoId) && isValidProduct(incoming());
       allow update: if isAdmin() && isValidId(productoId) && isValidProduct(incoming());
       allow delete: if isAdmin() && isValidId(productoId);
+    }
+
+    // Validación de Contador de Pedidos
+    function isValidContadorCreate(data) {
+      return data.keys().hasOnly(['ultimoNumero', 'updatedAt', 'createdAt']) &&
+        data.ultimoNumero is number &&
+        data.ultimoNumero > 0 &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp) &&
+        (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    function isValidContadorIncrement(newData, oldData) {
+      return newData.keys().hasOnly(['ultimoNumero', 'updatedAt', 'createdAt']) &&
+        newData.ultimoNumero is number &&
+        (('ultimoNumero' in oldData && newData.ultimoNumero == oldData.ultimoNumero + 1) || (!('ultimoNumero' in oldData) && newData.ultimoNumero == 1)) &&
+        (!('updatedAt' in newData) || newData.updatedAt is timestamp) &&
+        (!('createdAt' in newData) || newData.createdAt is timestamp);
+    }
+
+    // Colección: Contadores (para secuencia atómica de pedidos)
+    match /contadores/{contadorId} {
+      allow read: if contadorId == 'pedidos';
+      allow create: if contadorId == 'pedidos' && isValidContadorCreate(incoming());
+      allow update: if contadorId == 'pedidos' && (isAdmin() || isValidContadorIncrement(incoming(), existing()));
+      allow delete: if isAdmin() && contadorId == 'pedidos';
     }
 
     // Colección: Pedidos

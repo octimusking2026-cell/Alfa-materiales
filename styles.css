@@ -495,6 +495,11 @@ main {
   color: var(--color-rojo);
 }
 
+/* Envío a coordinar: aviso informativo, en azul */
+.carrito-envio.info {
+  color: #0284c7;
+}
+
 .carrito-acciones-derecha button {
   background-color: var(--color-naranja);
   color: var(--color-texto-invertido);
@@ -1734,3 +1739,451 @@ button:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   Sección Pedidos: Tarjetas Resumidas, Badges de Estado y Modal de Detalles
+   ========================================================================== */
+
+.tarjeta-pedido-resumen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background-color: var(--color-superficie);
+  border: 1px solid var(--color-gris-claro);
+  border-radius: var(--radio);
+  padding: 18px 22px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tarjeta-pedido-resumen:hover {
+  border-color: var(--color-naranja);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.pedido-resumen-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin: 4px 0;
+  font-size: 0.95rem;
+}
+
+.pedido-resumen-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-carbon);
+}
+
+.pedido-resumen-item i {
+  color: var(--color-gris);
+  font-size: 1.1rem;
+}
+
+.pedido-resumen-acciones {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #f0ebe4;
+  padding-top: 12px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.badge-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.badge-estado-pendiente { background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.badge-estado-confirmado { background-color: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+.badge-estado-preparando { background-color: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
+.badge-estado-enviado { background-color: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+.badge-estado-entregado { background-color: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+.badge-estado-cancelado { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+
+/* Distintivo especial: Pedido con Envío a Coordinar */
+.badge-envio-coordinar {
+  background-color: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.2px;
+}
+
+.tarjeta-pedido-coordinar {
+  border-left: 4px solid #0284c7 !important;
+  background-color: #f8fbfe !important;
+}
+
+.item-coordinar-aviso {
+  background-color: #e0f2fe;
+  padding: 6px 10px;
+  border-radius: var(--radio);
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+  font-size: 0.88rem;
+}
+
+.tag-ref-interna {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #0369a1;
+  background-color: #ffffff;
+  padding: 1px 7px;
+  border-radius: 4px;
+  border: 1px solid #93c5fd;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.banner-coordinar-modal {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-left: 4px solid #0284c7;
+  padding: 12px 16px;
+  border-radius: var(--radio);
+  color: #1e3a8a;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.banner-coordinar-modal i {
+  font-size: 1.3rem;
+  color: #0284c7;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.select-estado-pedido {
+  padding: 6px 12px;
+  border-radius: var(--radio);
+  border: 1px solid var(--color-gris-claro);
+  background-color: #fff;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--color-carbon);
+  outline: none;
+}
+
+.select-estado-pedido:focus {
+  border-color: var(--color-naranja);
+}
+
+.modal-detalle-pedido-cuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+}
+
+.detalle-bloque-cliente {
+  background-color: #fcfaf8;
+  border: 1px solid #eee8df;
+  border-left: 4px solid var(--color-naranja);
+  border-radius: var(--radio);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.92rem;
+}
+
+.detalle-bloque-estado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #f9f8f6;
+  border: 1px solid #eee8df;
+  border-radius: var(--radio);
+  padding: 12px 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.detalle-desglose-totales {
+  border-top: 2px solid #eee8df;
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  font-size: 0.95rem;
+}
+
+.detalle-desglose-totales .linea-total-destacada {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-naranja-oscuro);
+  font-family: var(--fuente-titulo);
+}
+
+/* ==========================================================================
+   Módulo de Selección de Envío y Cálculo de Fletes (Eldorado y Misiones)
+   ========================================================================== */
+
+.modulo-envio-fletes {
+  background-color: var(--color-superficie);
+  border: 1px solid var(--color-gris-claro);
+  border-radius: var(--radio);
+  padding: 22px 24px;
+  margin-top: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.04);
+}
+
+.modulo-envio-cabecera {
+  margin-bottom: 16px;
+  border-bottom: 1px solid #f0ebe4;
+  padding-bottom: 12px;
+}
+
+.modulo-envio-titulo {
+  font-family: var(--fuente-titulo);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-carbon);
+  margin: 0 0 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modulo-envio-titulo i {
+  color: var(--color-naranja);
+  font-size: 1.25rem;
+}
+
+.modulo-envio-subtitulo {
+  font-size: 0.88rem;
+  color: var(--color-gris);
+  margin: 0;
+}
+
+/* 1. Selector Toggle Principal */
+.envio-toggle-grupo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.btn-envio-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 2px solid var(--color-gris-claro);
+  border-radius: var(--radio);
+  background-color: #fbfaf8;
+  color: var(--color-carbon);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  outline: none;
+}
+
+.btn-envio-toggle:hover {
+  border-color: var(--color-naranja);
+  background-color: #fff9f4;
+}
+
+.btn-envio-toggle.activo {
+  border-color: var(--color-naranja);
+  background-color: #fff4ea;
+  color: var(--color-naranja-oscuro);
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(232, 93, 4, 0.12);
+}
+
+/* 2 & 3. Desplegables y campos */
+.envio-campo-dinamico {
+  margin-bottom: 16px;
+}
+
+.envio-fila-doble {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.envio-columna {
+  display: flex;
+  flex-direction: column;
+}
+
+.envio-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-carbon);
+  margin-bottom: 6px;
+}
+
+.envio-label i {
+  color: var(--color-naranja);
+}
+
+.envio-requerido {
+  color: #b3261e;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.envio-opcional {
+  color: var(--color-gris);
+  font-size: 0.82rem;
+  font-weight: normal;
+}
+
+.envio-select,
+.envio-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--color-gris-claro);
+  border-radius: var(--radio);
+  background-color: #fff;
+  font-family: inherit;
+  font-size: 0.92rem;
+  color: var(--color-carbon);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+
+.envio-select:focus,
+.envio-input:focus {
+  border-color: var(--color-naranja);
+  box-shadow: 0 0 0 3px rgba(232, 93, 4, 0.15);
+}
+
+textarea.envio-input {
+  resize: vertical;
+  min-height: 54px;
+  line-height: 1.45;
+}
+
+.envio-campos-direccion {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed #eee8df;
+}
+
+.envio-campo {
+  display: flex;
+  flex-direction: column;
+}
+
+.envio-error-inline {
+  color: #b3261e;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 4. Alerta Visual de Requisitos / Mínimos */
+.envio-alerta {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background-color: #fffbeb;
+  border: 1px solid #fef3c7;
+  border-left: 4px solid #d97706;
+  border-radius: var(--radio);
+  padding: 12px 16px;
+  margin-top: 16px;
+  animation: fadeInEnvio 0.25s ease;
+}
+
+.envio-alerta.alerta-peligro {
+  background-color: #fef2f2;
+  border-color: #fee2e2;
+  border-left-color: #dc2626;
+}
+
+.envio-alerta.alerta-info {
+  background-color: #f0f9ff;
+  border-color: #e0f2fe;
+  border-left-color: #0284c7;
+}
+
+.envio-alerta-icono {
+  font-size: 1.25rem;
+  color: #d97706;
+  line-height: 1;
+}
+
+.envio-alerta.alerta-peligro .envio-alerta-icono {
+  color: #dc2626;
+}
+
+.envio-alerta.alerta-info .envio-alerta-icono {
+  color: #0284c7;
+}
+
+.envio-alerta-texto {
+  font-size: 0.9rem;
+  color: #92400e;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+.envio-alerta.alerta-peligro .envio-alerta-texto {
+  color: #991b1b;
+}
+
+.envio-alerta.alerta-info .envio-alerta-texto {
+  color: #0369a1;
+}
+
+@keyframes fadeInEnvio {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 640px) {
+  .envio-toggle-grupo {
+    grid-template-columns: 1fr;
+  }
+  .envio-fila-doble {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .modulo-envio-fletes {
+    padding: 16px;
+  }
+}
+
+

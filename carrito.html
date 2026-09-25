@@ -45,6 +45,116 @@
                 <div class="carrito-productos">
                     <!-- Los productos del carrito se generan automáticamente desde script.js -->
                 </div>
+                <!-- Módulo de Selección de Envío y Cálculo de Fletes -->
+                <section id="modulo-envio-fletes" class="modulo-envio-fletes" style="display: none;">
+                    <div class="modulo-envio-cabecera">
+                        <h3 class="modulo-envio-titulo">
+                            <i class="bi bi-truck"></i> Destino y Cálculo de Envío
+                        </h3>
+                        <p class="modulo-envio-subtitulo">
+                            Indicá tu zona de entrega para cotizar el flete y conocer los requisitos de compra.
+                        </p>
+                    </div>
+
+                    <!-- 1. Selector Principal (Toggle) -->
+                    <div class="envio-toggle-grupo" role="group" aria-label="Zona de entrega">
+                        <button type="button" class="btn-envio-toggle activo" id="toggle-eldorado" data-tipo="eldorado">
+                            <i class="bi bi-geo-alt-fill"></i> 📍 soy de la cuidad de Eldorado
+                        </button>
+                        <button type="button" class="btn-envio-toggle" id="toggle-otro" data-tipo="otro">
+                            <i class="bi bi-truck"></i> 🚚 Otro lugar (Misiones)
+                        </button>
+                    </div>
+
+                    <!-- 2. Desplegable de Zonas de Eldorado -->
+                    <div id="grupo-zona-eldorado" class="envio-campo-dinamico">
+                        <label for="select-zona-eldorado" class="envio-label">
+                            <i class="bi bi-pin-map"></i> Zona local en Eldorado:
+                        </label>
+                        <select id="select-zona-eldorado" class="envio-select">
+                            <option value="km1_6">Km 1 a 6</option>
+                            <option value="km7_12">Km 7 a 12</option>
+                        </select>
+                    </div>
+
+                    <!-- 3. Desplegables en Cascada para Otro Lugar (Misiones) -->
+                    <div id="grupo-zona-misiones" class="envio-campo-dinamico" style="display: none;">
+                        <div class="envio-fila-doble">
+                            <div class="envio-columna">
+                                <label for="select-depto-misiones" class="envio-label">
+                                    <i class="bi bi-map"></i> Departamento / Zona:
+                                </label>
+                                <select id="select-depto-misiones" class="envio-select">
+                                    <option value="Apóstoles">Apóstoles</option>
+                                    <option value="Cainguás">Cainguás</option>
+                                    <option value="Candelaria">Candelaria</option>
+                                    <option value="Capital">Capital</option>
+                                    <option value="Concepción">Concepción</option>
+                                    <option value="Eldorado">Eldorado</option>
+                                    <option value="General Manuel Belgrano">General Manuel Belgrano</option>
+                                    <option value="Guaraní">Guaraní</option>
+                                    <option value="Iguazú">Iguazú</option>
+                                    <option value="Leandro N. Alem">Leandro N. Alem</option>
+                                    <option value="Libertador General San Martín">Libertador General San Martín</option>
+                                    <option value="Montecarlo">Montecarlo</option>
+                                    <option value="Oberá">Oberá</option>
+                                    <option value="San Ignacio">San Ignacio</option>
+                                    <option value="San Javier">San Javier</option>
+                                    <option value="San Pedro">San Pedro</option>
+                                    <option value="Veinticinco de Mayo (25 de Mayo)">Veinticinco de Mayo (25 de Mayo)</option>
+                                </select>
+                            </div>
+                            <div class="envio-columna">
+                                <label for="select-localidad-misiones" class="envio-label">
+                                    <i class="bi bi-buildings"></i> Ciudad / Localidad:
+                                </label>
+                                <select id="select-localidad-misiones" class="envio-select">
+                                    <!-- Se actualiza automáticamente al cambiar el departamento -->
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. Campos de Dirección y Referencias -->
+                    <div class="envio-campos-direccion">
+                        <div class="envio-campo">
+                            <label for="input-barrio-calle" class="envio-label">
+                                <i class="bi bi-geo"></i> Barrio y Calle <span class="envio-requerido">* (obligatorio)</span>:
+                            </label>
+                            <input 
+                                type="text" 
+                                id="input-barrio-calle" 
+                                class="envio-input" 
+                                placeholder="Ej: Barrio Iprodha, Calle Los Cedros 1234"
+                                maxlength="200"
+                                required
+                            >
+                            <div id="error-barrio-calle" class="envio-error-inline" style="display: none;">
+                                <i class="bi bi-exclamation-circle-fill"></i> Por favor ingresá el barrio y calle de entrega.
+                            </div>
+                        </div>
+
+                        <div class="envio-campo">
+                            <label for="input-detalles-referencia" class="envio-label">
+                                <i class="bi bi-card-text"></i> Detalles / Referencias <span class="envio-opcional">(opcional)</span>:
+                            </label>
+                            <textarea 
+                                id="input-detalles-referencia" 
+                                class="envio-input" 
+                                placeholder="Ej: Casa amarilla, sin portón, a 50m de la cancha"
+                                rows="2"
+                                maxlength="300"
+                            ></textarea>
+                        </div>
+                    </div>
+
+                    <!-- 5. Alerta Visual de Requisitos / Mínimos de Flete -->
+                    <div id="envio-alerta" class="envio-alerta" style="display: none;">
+                        <div class="envio-alerta-icono"><i class="bi bi-exclamation-triangle-fill"></i></div>
+                        <div class="envio-alerta-texto" id="envio-alerta-mensaje"></div>
+                    </div>
+                </section>
+
                 <div class="carrito-acciones">
                     <div class="carrito-acciones-izquierda">
                         <button class="carrito-acciones-vaciar">Vaciar carrito</button>
@@ -54,7 +164,7 @@
                         <p class="carrito-envio"></p>
                     </div>
                     <div class="carrito-acciones-derecha">
-                        <button></button>
+                        <button id="btn-confirmar-pedido" class="boton-accion-naranja"></button>
                     </div>
                 </div>
             </div>

@@ -15,6 +15,11 @@ import {
   getStorage 
 } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js';
 
+import { 
+  initializeAppCheck, 
+  ReCaptchaV3Provider 
+} from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app-check.js';
+
 export const firebaseConfig = {
   apiKey: "AIzaSyDALHXJ6Ip17vp1iSDpbLuhbvWGqNG6cos",
   authDomain: "alfa-materiales.firebaseapp.com",
@@ -25,12 +30,30 @@ export const firebaseConfig = {
   measurementId: "G-QLEX9FF15J"
 };
 
-export const ADMIN_EMAIL = "octimusking2026@gmail.com";
+export const ADMIN_EMAILS = [
+  "octimusking2026@gmail.com",
+  "jhonnytumach@gmail.com"
+];
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const storage = getStorage(app, firebaseConfig.storageBucket);
+
+// Inicialización de Firebase App Check (reCAPTCHA v3) si está configurado en el entorno
+export let appCheck = null;
+try {
+  const recaptchaSiteKey = window?.FIREBASE_APPCHECK_KEY || null;
+  if (recaptchaSiteKey) {
+    appCheck = initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(recaptchaSiteKey),
+      isTokenAutoRefreshEnabled: true
+    });
+    console.log("[App Check] Firebase App Check inicializado con reCAPTCHA v3.");
+  }
+} catch (appCheckErr) {
+  console.warn("[App Check] No se pudo inicializar App Check:", appCheckErr?.message || appCheckErr);
+}
 
 export const OperationType = {
   CREATE: 'create',

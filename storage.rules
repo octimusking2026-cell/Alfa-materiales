@@ -5,7 +5,10 @@ service firebase.storage {
     
     // Función auxiliar para verificar si el usuario es el administrador
     function isAdmin() {
-      return request.auth != null && request.auth.token.email == 'octimusking2026@gmail.com';
+      return request.auth != null && (
+        request.auth.token.get('admin', false) == true ||
+        ('email' in request.auth.token && request.auth.token.email.lower() in ['octimusking2026@gmail.com', 'jhonnytumach@gmail.com'])
+      );
     }
 
     // Carpeta productos/: imágenes del catálogo de Alfa Materiales

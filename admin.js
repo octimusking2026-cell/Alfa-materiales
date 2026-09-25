@@ -3,7 +3,7 @@ import {
   db, 
   auth, 
   storage,
-  ADMIN_EMAIL, 
+  ADMIN_EMAILS, 
   OperationType, 
   handleFirestoreError 
 } from './firebase-init.js';
@@ -42,6 +42,13 @@ import {
   mostrarAlertaModal, 
   mostrarConfirmacionModal 
 } from './modal-dialogs.js';
+
+import { 
+  formatearCodigoPedido, 
+  formatearPrecio,
+  obtenerInfoDepartamento,
+  ESTADOS_PEDIDO 
+} from './pedidos-utils.js';
 
 // Catálogo predeterminado para sincronización / siembra inicial
 const CATALOGO_BASE = [
@@ -104,14 +111,6 @@ let editandoProductoId = null; // para edición inline
 let desuscribirProductos = null;
 let desuscribirPedidos = null;
 
-// Formateador de precios en Pesos Argentinos
-function formatearPrecio(num) {
-  return Number(num || 0).toLocaleString("es-AR", { 
-    style: "currency", 
-    currency: "ARS", 
-    minimumFractionDigits: 0 
-  });
-}
 
 // Formateador de fechas
 function formatearFecha(timestamp) {
@@ -147,7 +146,7 @@ function escapar(str) {
 }
 
 /* ==========================================================================
-   Autenticación (Restringida a ADMIN_EMAIL)
+   Autenticación (Restringida a ADMIN_EMAILS)
    ========================================================================== */
 
 function inicializarAuth() {
@@ -166,10 +165,14 @@ function inicializarAuth() {
     successMsg.style.display = "none";
 
     const email = inputEmail.value.trim().toLowerCase();
-    const password = inputPassword.value;
+    if (!email || !password) {
+      errorMsg.textContent = "Por favor, completá tu correo y contraseña.";
+      errorMsg.style.display = "block";
+      return;
+    }
 
-    if (email !== ADMIN_EMAIL.toLowerCase()) {
-      errorMsg.textContent = `Este panel de administración es exclusivo para ${ADMIN_EMAIL}.`;
+    if (!ADMIN_EMAILS.includes(email)) {
+      errorMsg.textContent = "Este panel de administración es exclusivo para administradores autorizados.";
       errorMsg.style.display = "block";
       return;
     }
@@ -184,6 +187,8 @@ function inicializarAuth() {
         mensaje = "Contraseña incorrecta. Podés solicitar un enlace de restablecimiento abajo.";
       } else if (err.code === "auth/user-not-found") {
         mensaje = "El usuario no fue encontrado en Firebase Auth.";
+      } else if (err.code === "auth/invalid-email") {
+        mensaje = "El correo electrónico no es válido según Firebase Authentication.";
       } else if (err.code === "auth/too-many-requests") {
         mensaje = "Demasiados intentos erróneos. Esperá unos minutos.";
       } else if (err.code === "auth/operation-not-allowed") {
@@ -199,7 +204,17 @@ function inicializarAuth() {
   btnReset?.addEventListener("click", async () => {
     errorMsg.style.display = "none";
     successMsg.style.display = "none";
-    const email = inputEmail.value.trim() || ADMIN_EMAIL;
+    const email = inputEmail.value.trim();
+    if (!email) {
+      errorMsg.textContent = "Por favor, ingresá tu correo electrónico para restablecer la contraseña.";
+      errorMsg.style.display = "block";
+      return;
+    }
+    if (!ADMIN_EMAILS.includes(email.toLowerCase())) {
+      errorMsg.textContent = "Este panel de administración es exclusivo para administradores autorizados.";
+      errorMsg.style.display = "block";
+      return;
+    }
     try {
       await sendPasswordResetEmail(auth, email);
       successMsg.textContent = `Enviamos un correo de restablecimiento a ${email}. Revisá tu bandeja de entrada o spam para elegir tu nueva contraseña.`;
@@ -212,14 +227,13 @@ function inicializarAuth() {
     }
   });
 
-  // Ingreso directo con Google (octimusking2026@gmail.com)
+  // Ingreso directo con Google
   const btnGoogle = document.getElementById("btn-google-login");
   btnGoogle?.addEventListener("click", async () => {
     errorMsg.style.display = "none";
     successMsg.style.display = "none";
     try {
       const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ login_hint: ADMIN_EMAIL });
       await signInWithPopup(auth, provider);
     } catch (err) {
       console.error("Error en Google Auth:", err);
@@ -253,11 +267,12 @@ function inicializarAuth() {
     const userEmailSpan = document.getElementById("admin-user-email");
 
     if (user) {
-      // Verificar si es el usuario autorizado
-      if (user.email && user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+      // Verificar si es un usuario autorizado
+      const emailUsuario = (user.email || "").toLowerCase();
+      if (!ADMIN_EMAILS.includes(emailUsuario)) {
         await mostrarAlertaModal({
           titulo: "Acceso denegado",
-          mensaje: `Acceso denegado: solo ${ADMIN_EMAIL} tiene permisos de administración.`,
+          mensaje: "Acceso denegado: este panel es exclusivo para administradores autorizados.",
           icono: "bi-shield-x",
           tipo: "error"
         });
@@ -321,19 +336,36 @@ function iniciarSuscripciones() {
   });
 
   // 2. Suscripción a Pedidos (Solo lectura, ordenados del más nuevo al más viejo)
+  console.log("[ADMIN] Listener de pedidos iniciado");
   const qPedidos = query(collection(db, "pedidos"), orderBy("createdAt", "desc"));
   desuscribirPedidos = onSnapshot(qPedidos, (snapshot) => {
+    console.log(`[ADMIN] Documentos recibidos: ${snapshot.size}`);
+    console.log(`[ADMIN] Firestore contiene ${snapshot.size} pedidos`);
     pedidosLista = [];
     snapshot.forEach(docSnap => {
+      const data = docSnap.data();
+      const codigo = data.codigoPedido || (data.numeroPedido ? `PEDIDO #${String(data.numeroPedido).padStart(4, "0")}` : docSnap.id);
+      console.log(`[ADMIN] Pedido recibido: ID=${docSnap.id} | ${codigo} | Cliente: ${data.clienteNombre || 'Sin nombre'} | Total: ${data.total}`);
       pedidosLista.push({
         id: docSnap.id,
-        ...docSnap.data()
+        ...data
       });
     });
 
     renderizarPedidos();
   }, (error) => {
-    handleFirestoreError(error, OperationType.GET, "pedidos");
+    console.error("[ADMIN] Error en listener de pedidos (/pedidos):", error.code, error.message, error);
+    const contenedor = document.getElementById("contenedor-pedidos");
+    if (contenedor) {
+      contenedor.innerHTML = `
+        <div class="empty-state-pedidos" style="border: 2px dashed #b3261e; background-color: #fff8f8; padding: 25px; border-radius: 8px;">
+          <i class="bi bi-exclamation-octagon-fill" style="font-size: 2.5rem; color: #b3261e;"></i>
+          <h3 style="color: #b3261e; margin: 10px 0;">Error al conectar con Firestore (/pedidos)</h3>
+          <p style="color: #555; font-size: 0.95rem; margin-bottom: 8px;">Código de error: <strong>${error.code || 'desconocido'}</strong></p>
+          <p style="color: #222; font-size: 0.85rem; font-family: monospace; background: #eee; padding: 10px; border-radius: 4px; word-break: break-all;">${error.message}</p>
+        </div>
+      `;
+    }
   });
 }
 
@@ -1100,17 +1132,193 @@ function asignarEventosTabla() {
 }
 
 /* ==========================================================================
-   SECCIÓN 2: PEDIDOS (SOLO LECTURA, DEL MÁS NUEVO AL MÁS VIEJO)
+   SECCIÓN 2: PEDIDOS (RESUMEN CORRELATIVO Y MODAL DE DETALLES)
    ========================================================================== */
 
 function inicializarPedidos() {
   const inputBuscar = document.getElementById("admin-buscar-pedidos");
+  const selectFiltroEstado = document.getElementById("admin-filtro-estado-pedidos");
   const btnRecargar = document.getElementById("btn-recargar-pedidos");
 
   inputBuscar?.addEventListener("input", renderizarPedidos);
+  selectFiltroEstado?.addEventListener("change", renderizarPedidos);
   btnRecargar?.addEventListener("click", () => {
     mostrarToast("Actualizando pedidos...", "info");
     iniciarSuscripciones();
+  });
+}
+
+// Obtiene el código visible correlativo asegurando no duplicación y retrocompatibilidad
+function obtenerCodigoVisible(pedido, idx = 0) {
+  if (pedido.codigoPedido) return pedido.codigoPedido;
+  if (pedido.numeroPedido) return formatearCodigoPedido(pedido.numeroPedido);
+  const fallbackNum = pedidosLista.length - idx;
+  return `PEDIDO #${String(Math.max(1, fallbackNum)).padStart(4, "0")}`;
+}
+
+// Actualiza el estado de un pedido en Firestore
+async function cambiarEstadoPedido(pedidoId, nuevoEstado) {
+  try {
+    await updateDoc(doc(db, "pedidos", pedidoId), {
+      estado: nuevoEstado,
+      updatedAt: serverTimestamp()
+    });
+    const label = ESTADOS_PEDIDO[nuevoEstado]?.label || nuevoEstado;
+    mostrarToast(`Estado actualizado a "${label}".`);
+  } catch (err) {
+    console.error("Error al actualizar estado del pedido:", err);
+    mostrarToast("No se pudo actualizar el estado del pedido.", "error");
+  }
+}
+
+// Modal completo de detalles del pedido
+function abrirModalDetallePedido(pedido, codigo) {
+  const modalOverlay = document.createElement("div");
+  modalOverlay.className = "admin-modal";
+  modalOverlay.style.zIndex = "10000";
+
+  const fechaFormateada = formatearFecha(pedido.createdAt);
+  const estadoClave = (pedido.estado || "pendiente").toLowerCase();
+  const esCoordinar = pedido.envioACoordinar === true || String(pedido.tipoDestino || "").toLowerCase() === "otro";
+  const destinoTexto = pedido.zonaEnvio || `${pedido.departamento || 'Misiones'} — ${pedido.localidad || ''}`;
+  
+  // Buscar información interna del departamento para sugerir precio de referencia al operador
+  const infoDepto = esCoordinar ? obtenerInfoDepartamento(pedido.departamento || pedido.zonaEnvio) : null;
+  const fleteReferencia = infoDepto?.costoFleteReferencia;
+
+  // Calcular o recuperar subtotal y costo de envío
+  const items = Array.isArray(pedido.items) ? pedido.items : [];
+  const subtotalCalc = typeof pedido.subtotal === "number" 
+    ? pedido.subtotal 
+    : items.reduce((acc, i) => acc + (Number(i.precio || 0) * Number(i.cantidad || 1)), 0);
+  
+  const totalCalc = Number(pedido.total || subtotalCalc);
+  const costoEnvioCalc = typeof pedido.costoEnvio === "number"
+    ? pedido.costoEnvio
+    : Math.max(0, totalCalc - subtotalCalc);
+
+  modalOverlay.innerHTML = `
+    <div class="modal-contenido" style="max-width: 680px; width: 92%;">
+      <div class="modal-cabecera">
+        <h3 style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <i class="bi bi-receipt" style="color: var(--color-naranja);"></i> 
+          ${escapar(codigo)}
+          ${esCoordinar ? `<span class="badge-envio-coordinar" style="font-size: 0.78rem;"><i class="bi bi-telephone-outbound-fill"></i> A coordinar</span>` : ''}
+        </h3>
+        <button type="button" class="modal-cerrar" aria-label="Cerrar">&times;</button>
+      </div>
+
+      <div class="modal-detalle-pedido-cuerpo">
+        <!-- Tabla de Productos y Precios Congelados (Prioridad de preparación) -->
+        <div style="overflow-x: auto;">
+          <table class="tabla-items-pedido" style="margin-bottom: 0;">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th style="text-align: center; width: 80px;">Cant.</th>
+                <th style="text-align: right; width: 130px;">Precio Unit.</th>
+                <th style="text-align: right; width: 140px;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.length > 0 ? items.map(item => {
+                const cant = Number(item.cantidad || 1);
+                const precio = Number(item.precio || 0);
+                const sub = typeof item.subtotal === "number" ? item.subtotal : cant * precio;
+                return `
+                  <tr>
+                    <td><strong>${escapar(item.nombre || "Producto")}</strong></td>
+                    <td style="text-align: center;">${cant}</td>
+                    <td style="text-align: right;">${formatearPrecio(precio)}</td>
+                    <td style="text-align: right; font-weight: 600;">${formatearPrecio(sub)}</td>
+                  </tr>
+                `;
+              }).join("") : `<tr><td colspan="4" style="text-align: center; color: var(--color-gris);">Sin productos registrados.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+
+        ${esCoordinar ? `
+          <!-- Banner de Aviso de Seguimiento Telefónico con Guía de Referencia Interna -->
+          <div class="banner-coordinar-modal">
+            <i class="bi bi-telephone-inbound-fill"></i>
+            <div style="width: 100%;">
+              <strong>Seguimiento de envío requerido:</strong> Este pedido tiene entrega a convenir a <strong>${escapar(destinoTexto)}</strong>.<br>
+              Comunicate con el cliente al <strong>${escapar(pedido.clienteTelefono || "Sin teléfono")}</strong> para presupuestar el flete y acordar la entrega.
+              
+              ${fleteReferencia ? `
+                <div style="margin-top: 8px; padding: 7px 12px; background-color: #ffffff; border-radius: 4px; border: 1px dashed #93c5fd; font-size: 0.88rem; color: #0369a1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                  <span><i class="bi bi-tag-fill" style="color: var(--color-naranja); margin-right: 4px;"></i> <strong>Tarifa base de referencia interna (${escapar(infoDepto.nombre)}):</strong></span>
+                  <strong style="font-size: 0.95rem; color: #0c4a6e; background-color: #f0f9ff; padding: 2px 8px; border-radius: 4px; border: 1px solid #bae6fd;">${formatearPrecio(fleteReferencia)}</strong>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Bloque de Estado del Pedido -->
+        <div class="detalle-bloque-estado">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <i class="bi bi-toggles" style="font-size: 1.1rem; color: var(--color-naranja);"></i>
+            <strong>Estado del Pedido:</strong>
+          </div>
+          <select id="modal-select-estado" class="select-estado-pedido">
+            <option value="pendiente" ${estadoClave === 'pendiente' ? 'selected' : ''}>Pendiente</option>
+            <option value="entregado" ${estadoClave === 'entregado' ? 'selected' : ''}>Entregado</option>
+            <option value="cancelado" ${estadoClave === 'cancelado' ? 'selected' : ''}>Cancelado</option>
+          </select>
+        </div>
+
+        <!-- Bloque Datos del Cliente y Entrega -->
+        <div class="detalle-bloque-cliente">
+          <div><i class="bi bi-person-fill" style="color: var(--color-naranja); margin-right: 6px;"></i><strong>Nombre del Cliente:</strong> ${escapar(pedido.clienteNombre || "Sin especificar")}</div>
+          <div><i class="bi bi-telephone-fill" style="color: var(--color-naranja); margin-right: 6px;"></i><strong>Teléfono:</strong> <a href="tel:${escapar(pedido.clienteTelefono || '')}" style="color: inherit; text-decoration: underline; font-weight: 600;">${escapar(pedido.clienteTelefono || "Sin especificar")}</a></div>
+          <div><i class="bi bi-geo-alt-fill" style="color: var(--color-naranja); margin-right: 6px;"></i><strong>Dirección de entrega:</strong> ${escapar(pedido.direccion || pedido.clienteDireccion || "Sin especificar")}</div>
+          ${pedido.zonaEnvio || pedido.departamento ? `<div><i class="bi bi-truck" style="color: var(--color-naranja); margin-right: 6px;"></i><strong>Zona de entrega / Destino:</strong> ${escapar(destinoTexto)}</div>` : ''}
+          ${pedido.referencia ? `<div><i class="bi bi-card-text" style="color: var(--color-naranja); margin-right: 6px;"></i><strong>Detalles / Referencias:</strong> ${escapar(pedido.referencia)}</div>` : ''}
+          <div><i class="bi bi-calendar3" style="color: var(--color-naranja); margin-right: 6px;"></i><strong>Fecha y hora:</strong> ${escapar(fechaFormateada)}</div>
+        </div>
+
+        <!-- Desglose Financiero -->
+        <div class="detalle-desglose-totales">
+          <div>Subtotal: <strong>${formatearPrecio(subtotalCalc)}</strong></div>
+          <div>Costo de envío: <strong>${esCoordinar ? "A coordinar con el cliente (a convenir)" : (costoEnvioCalc === 0 ? "Gratis ($0)" : formatearPrecio(costoEnvioCalc))}</strong></div>
+          <div class="linea-total-destacada">TOTAL: ${formatearPrecio(totalCalc)}</div>
+        </div>
+      </div>
+
+      <div class="modal-pie" style="padding: 14px 24px; border-top: 1px solid #eee8df; justify-content: flex-end;">
+        <button type="button" class="boton-guardar btn-cerrar-modal-detalle" style="padding: 10px 24px;">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modalOverlay);
+
+  const selectEstado = modalOverlay.querySelector("#modal-select-estado");
+  selectEstado?.addEventListener("change", (e) => {
+    cambiarEstadoPedido(pedido.id, e.target.value);
+  });
+
+  const cerrarModal = () => {
+    document.removeEventListener("keydown", onKeyDown);
+    modalOverlay.remove();
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cerrarModal();
+    }
+  };
+
+  document.addEventListener("keydown", onKeyDown);
+  modalOverlay.querySelector(".modal-cerrar")?.addEventListener("click", cerrarModal);
+  modalOverlay.querySelector(".btn-cerrar-modal-detalle")?.addEventListener("click", cerrarModal);
+  modalOverlay.addEventListener("click", (e) => {
+    if (e.target === modalOverlay) cerrarModal();
   });
 }
 
@@ -1119,28 +1327,56 @@ function renderizarPedidos() {
   const contadorEl = document.getElementById("admin-pedidos-count");
   const contadorBadge = document.getElementById("contador-pedidos");
   const inputBuscar = document.getElementById("admin-buscar-pedidos");
+  const selectFiltroEstado = document.getElementById("admin-filtro-estado-pedidos");
 
   if (!contenedor) return;
 
   const termino = (inputBuscar?.value || "").toLowerCase().trim();
+  const filtroEstado = (selectFiltroEstado?.value || "todos").toLowerCase();
 
-  let filtrados = pedidosLista.filter(ped => {
+  let filtrados = pedidosLista.filter((ped, idx) => {
+    const estadoClave = (ped.estado || "pendiente").toLowerCase();
+    const esCoordinar = ped.envioACoordinar === true || String(ped.tipoDestino || "").toLowerCase() === "otro";
+
+    // Filtro especial 'coordinar' o por estado: 'todos', 'pendiente', 'entregado' o 'cancelado'
+    if (filtroEstado === "coordinar") {
+      if (!esCoordinar) return false;
+    } else if (filtroEstado !== "todos" && estadoClave !== filtroEstado) {
+      return false;
+    }
+
     if (!termino) return true;
+    const codigo = obtenerCodigoVisible(ped, idx).toLowerCase();
     const clienteStr = (ped.clienteNombre || "").toLowerCase();
+    const telStr = (ped.clienteTelefono || "").toLowerCase();
+    const dirStr = (ped.clienteDireccion || "").toLowerCase();
+    const zonaStr = (ped.zonaEnvio || ped.departamento || "").toLowerCase();
     const idStr = (ped.id || "").toLowerCase();
     const itemsStr = (ped.items || []).map(i => i.nombre || "").join(" ").toLowerCase();
-    return clienteStr.includes(termino) || idStr.includes(termino) || itemsStr.includes(termino);
+    return codigo.includes(termino) || clienteStr.includes(termino) || telStr.includes(termino) || dirStr.includes(termino) || zonaStr.includes(termino) || idStr.includes(termino) || itemsStr.includes(termino);
   });
 
-  if (contadorEl) contadorEl.textContent = pedidosLista.length;
+  if (contadorEl) {
+    if (filtroEstado === "todos") {
+      contadorEl.textContent = pedidosLista.length;
+    } else {
+      contadorEl.textContent = `${filtrados.length} (de ${pedidosLista.length})`;
+    }
+  }
   if (contadorBadge) contadorBadge.textContent = pedidosLista.length;
 
+  console.log(`[ADMIN] Pedidos renderizados: ${filtrados.length} (Filtro: ${filtroEstado})`);
+
   if (filtrados.length === 0) {
+    const estadoLabel = selectFiltroEstado?.options[selectFiltroEstado.selectedIndex]?.text || filtroEstado;
+    const mensajeVacio = filtroEstado !== "todos"
+      ? `No se encontraron pedidos con el filtro "${estadoLabel}".`
+      : "Cuando un cliente confirme un pedido desde el carrito, aparecerá aquí en tiempo real con su número correlativo y detalle completo.";
     contenedor.innerHTML = `
       <div class="empty-state-pedidos">
         <i class="bi bi-receipt-cutoff" style="font-size: 3rem; color: var(--color-gris);"></i>
-        <h3>No hay pedidos registrados</h3>
-        <p>Cuando un cliente realice una compra desde el carrito público, los pedidos aparecerán aquí automáticamente en tiempo real.</p>
+        <h3>${filtroEstado !== "todos" ? `Sin pedidos (${estadoLabel})` : "No hay pedidos registrados"}</h3>
+        <p>${mensajeVacio}</p>
       </div>
     `;
     return;
@@ -1150,85 +1386,86 @@ function renderizarPedidos() {
 
   filtrados.forEach((pedido, idx) => {
     const card = document.createElement("article");
-    card.className = "tarjeta-pedido";
+    const esCoordinar = pedido.envioACoordinar === true || String(pedido.tipoDestino || "").toLowerCase() === "otro";
+    card.className = `tarjeta-pedido tarjeta-pedido-resumen ${esCoordinar ? 'tarjeta-pedido-coordinar' : ''}`;
 
+    const codigo = obtenerCodigoVisible(pedido, idx);
     const fechaFormateada = formatearFecha(pedido.createdAt);
-    const totalItems = (pedido.items || []).reduce((acc, i) => acc + (i.cantidad || 0), 0);
+    const estadoClave = (pedido.estado || "pendiente").toLowerCase();
+    const estadoInfo = ESTADOS_PEDIDO[estadoClave] || { label: pedido.estado || "Pendiente", icono: "bi-clock-history" };
+    const destinoTexto = pedido.zonaEnvio || `${pedido.departamento || 'Misiones'} — ${pedido.localidad || ''}`;
 
-    let itemsHtml = "";
-    if (Array.isArray(pedido.items) && pedido.items.length > 0) {
-      itemsHtml = `
-        <table class="tabla-items-pedido">
-          <thead>
-            <tr>
-              <th>Producto</th>
-              <th style="text-align: center; width: 90px;">Cantidad</th>
-              <th style="text-align: right; width: 130px;">Precio Unit.</th>
-              <th style="text-align: right; width: 140px;">Subtotal</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${pedido.items.map(item => {
-              const cant = item.cantidad || 1;
-              const precio = item.precio || 0;
-              const subtotal = cant * precio;
-              return `
-                <tr>
-                  <td><strong>${escapar(item.nombre)}</strong></td>
-                  <td style="text-align: center;">${cant}</td>
-                  <td style="text-align: right;">${formatearPrecio(precio)}</td>
-                  <td style="text-align: right; font-weight: 600;">${formatearPrecio(subtotal)}</td>
-                </tr>
-              `;
-            }).join("")}
-          </tbody>
-        </table>
-      `;
-    } else {
-      itemsHtml = `<p style="color: var(--color-gris); font-style: italic;">Sin detalle de items.</p>`;
-    }
+    // Buscar tarifa orientativa interna para el operador
+    const infoDepto = esCoordinar ? obtenerInfoDepartamento(pedido.departamento || pedido.zonaEnvio) : null;
+    const fleteReferencia = infoDepto?.costoFleteReferencia;
 
-    const clienteInfo = pedido.clienteNombre || pedido.clienteTelefono || pedido.clienteDireccion
-      ? `
-        <div class="pedido-cliente-bloque">
-          <i class="bi bi-person-circle"></i>
-          <div>
-            <strong>${escapar(pedido.clienteNombre || "Cliente web")}</strong>
-            ${pedido.clienteTelefono ? ` • <span>Tel: ${escapar(pedido.clienteTelefono)}</span>` : ""}
-            ${pedido.clienteDireccion ? ` • <span>Dir: ${escapar(pedido.clienteDireccion)}</span>` : ""}
-          </div>
-        </div>
-      `
-      : "";
+    const totalUnidades = (pedido.items || []).reduce((acc, i) => acc + Number(i.cantidad || 1), 0);
 
     card.innerHTML = `
-      <header class="pedido-cabecera">
+      <header class="pedido-cabecera" style="margin-bottom: 6px; padding-bottom: 8px;">
         <div class="pedido-meta">
-          <span class="pedido-num-tag">#${pedido.id.slice(0, 7)}</span>
-          <span class="pedido-fecha"><i class="bi bi-calendar3"></i> ${fechaFormateada}</span>
-          <span class="pedido-badge-items"><i class="bi bi-box-seam"></i> ${totalItems} unidad${totalItems === 1 ? '' : 'es'}</span>
+          <span class="pedido-num-tag">${escapar(codigo)}</span>
+          <span class="badge-estado badge-estado-${estadoClave}">
+            <i class="bi ${estadoInfo.icono}"></i> ${estadoInfo.label}
+          </span>
+          ${esCoordinar ? `
+            <span class="badge-envio-coordinar" title="Envío a convenir fuera de Eldorado — Llamar para cotizar">
+              <i class="bi bi-telephone-outbound-fill"></i> A coordinar
+            </span>
+          ` : ''}
         </div>
-        <div class="pedido-badge-solo-lectura" title="Esta sección es de solo lectura">
-          <i class="bi bi-eye"></i> Solo lectura
-        </div>
+        <span class="pedido-fecha"><i class="bi bi-calendar3"></i> ${fechaFormateada}</span>
       </header>
 
-      ${clienteInfo}
-
-      <div class="pedido-detalle-items">
-        ${itemsHtml}
+      <div class="pedido-resumen-grid">
+        <div class="pedido-resumen-item">
+          <i class="bi bi-person-fill"></i>
+          <div><strong>Cliente:</strong> ${escapar(pedido.clienteNombre || "Cliente web")} (${escapar(pedido.clienteTelefono || "Sin tel.")})</div>
+        </div>
+        <div class="pedido-resumen-item">
+          <i class="bi bi-geo-alt-fill"></i>
+          <div><strong>Dirección:</strong> ${escapar(pedido.clienteDireccion || pedido.direccion || "Sin dirección")}</div>
+        </div>
+        <div class="pedido-resumen-item">
+          <i class="bi bi-cash-stack"></i>
+          <div><strong>Total productos:</strong> <span style="font-weight: 700; color: var(--color-naranja-oscuro);">${formatearPrecio(pedido.total)}</span></div>
+        </div>
+        ${esCoordinar ? `
+          <div class="pedido-resumen-item item-coordinar-aviso">
+            <i class="bi bi-telephone-forward-fill"></i>
+            <div>
+              <strong>Flete a convenir:</strong> ${escapar(destinoTexto)}
+              ${fleteReferencia ? `<span class="tag-ref-interna" title="Tarifa orientativa interna para el operador"><i class="bi bi-tag-fill" style="color: var(--color-naranja);"></i> Ref. base: ${formatearPrecio(fleteReferencia)}</span>` : ''}
+            </div>
+          </div>
+        ` : ''}
       </div>
 
-      <footer class="pedido-pie">
-        <div class="pedido-estado-tag">
-          <span class="punto-estado"></span> Recibido
-        </div>
-        <div class="pedido-total-box">
-          <small>TOTAL DEL PEDIDO</small>
-          <strong>${formatearPrecio(pedido.total)}</strong>
+      <footer class="pedido-resumen-acciones">
+        <button class="boton-accion-secundario btn-ver-detalles-pedido" data-id="${pedido.id}">
+          <i class="bi bi-eye"></i> Ver detalles (${totalUnidades} u.)
+        </button>
+
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <small style="color: var(--color-gris); font-weight: 600;">Estado:</small>
+          <select class="select-estado-pedido select-estado-rapido" data-id="${pedido.id}">
+            <option value="pendiente" ${estadoClave === 'pendiente' ? 'selected' : ''}>Pendiente</option>
+            <option value="entregado" ${estadoClave === 'entregado' ? 'selected' : ''}>Entregado</option>
+            <option value="cancelado" ${estadoClave === 'cancelado' ? 'selected' : ''}>Cancelado</option>
+          </select>
         </div>
       </footer>
     `;
+
+    // Event listener para el botón "Ver detalles"
+    card.querySelector(".btn-ver-detalles-pedido")?.addEventListener("click", () => {
+      abrirModalDetallePedido(pedido, codigo);
+    });
+
+    // Event listener para el selector rápido de estado
+    card.querySelector(".select-estado-rapido")?.addEventListener("change", (e) => {
+      cambiarEstadoPedido(pedido.id, e.target.value);
+    });
 
     contenedor.appendChild(card);
   });

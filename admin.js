@@ -12,6 +12,7 @@ import {
   collection, 
   doc, 
   getDocs, 
+  setDoc,
   addDoc, 
   updateDoc, 
   deleteDoc, 
@@ -72,6 +73,29 @@ const CATALOGO_BASE = [
   { nombre: "Barra de hierro 16", precio: 47500, imagen: "fotos/varilla de hierro.jpg", categoria: "otros" },
   { nombre: "Barra de hierro 20", precio: 75375, imagen: "fotos/varilla de hierro.jpg", categoria: "otros" }
 ];
+
+// Normaliza nombres para comparación de duplicados sin importar mayúsculas, tildes ni espacios extra
+function normalizarNombre(str) {
+  return (str || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Genera un ID determinista y compatible con firestore.rules (^[a-zA-Z0-9_\-]+$)
+function generarIdBaseCatalogo(item, index) {
+  const num = String(index + 1).padStart(2, "0");
+  const slug = item.nombre
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 45);
+  return `base_${num}_${slug}`;
+}
 
 // Estado local de la aplicación administrativa
 let productosLista = [];
@@ -651,12 +675,36 @@ function inicializarProductos() {
     }
   });
 
-  // Sembrar catálogo inicial
+  // Sembrar / sincronizar catálogo inicial de forma idempotente y robusta
   btnSembrar?.addEventListener("click", async () => {
-    const textoConfirm = productosLista.length > 0 
-      ? `Ya existen ${productosLista.length} productos en la base de datos. ¿Deseás sincronizar y agregar los 27 productos base del catálogo en Firestore?`
+    btnSembrar.disabled = true;
+    btnSembrar.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Verificando base...`;
+
+    let snapshotActual;
+    try {
+      // 1. Lectura directa del estado actual de Firestore (sin depender de estado reactivo local)
+      snapshotActual = await getDocs(collection(db, "productos"));
+    } catch (err) {
+      console.error("Error al consultar productos existentes en Firestore:", err);
+      btnSembrar.disabled = false;
+      btnSembrar.innerHTML = `<i class="bi bi-cloud-arrow-up"></i> Sincronizar catálogo base`;
+      await mostrarAlertaModal({
+        titulo: "Error de lectura",
+        mensaje: `No se pudo consultar el catálogo en Firestore para verificar duplicados:\n[${err.code || 'error'}] ${err.message}`,
+        icono: "bi-exclamation-triangle-fill",
+        tipo: "error"
+      });
+      return;
+    }
+
+    const cantidadActual = snapshotActual.size;
+    const textoConfirm = cantidadActual > 0 
+      ? `Actualmente hay ${cantidadActual} productos en Firestore. ¿Deseás sincronizar los 27 productos base? Los que ya existan no se duplicarán.`
       : "¿Deseás cargar los 27 productos base del catálogo de Alfa Materiales en Firestore?";
     
+    btnSembrar.disabled = false;
+    btnSembrar.innerHTML = `<i class="bi bi-cloud-arrow-up"></i> Sincronizar catálogo base`;
+
     const confirmado = await mostrarConfirmacionModal({
       titulo: "Sincronizar Catálogo Base",
       mensaje: textoConfirm,
@@ -669,27 +717,91 @@ function inicializarProductos() {
     if (!confirmado) return;
 
     btnSembrar.disabled = true;
-    btnSembrar.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Sincronizando...`;
+    btnSembrar.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Sincronizando (0/27)...`;
 
     try {
-      let agregados = 0;
-      for (const item of CATALOGO_BASE) {
-        // Evitar duplicar exactamente por nombre
-        const yaExiste = productosLista.some(p => p.nombre.toLowerCase() === item.nombre.toLowerCase());
-        if (!yaExiste) {
-          await addDoc(collection(db, "productos"), {
-            nombre: item.nombre,
-            precio: item.precio,
-            categoria: item.categoria,
-            imagen: item.imagen,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          });
-          agregados++;
+      // 2. Mapear productos existentes por ID determinista y por nombre normalizado
+      const idsExistentes = new Set();
+      const nombresExistentes = new Set();
+
+      snapshotActual.forEach(docSnap => {
+        idsExistentes.add(docSnap.id);
+        const data = docSnap.data();
+        if (data?.nombre) {
+          nombresExistentes.add(normalizarNombre(data.nombre));
         }
+      });
+
+      const omitidos = [];
+      const itemsParaEscribir = [];
+
+      CATALOGO_BASE.forEach((item, index) => {
+        const docId = generarIdBaseCatalogo(item, index);
+        const nombreNorm = normalizarNombre(item.nombre);
+
+        if (idsExistentes.has(docId) || nombresExistentes.has(nombreNorm)) {
+          omitidos.push({
+            item,
+            docId,
+            motivo: idsExistentes.has(docId) ? "ID existente" : "Nombre ya registrado"
+          });
+        } else {
+          itemsParaEscribir.push({ item, docId, index });
+        }
+      });
+
+      if (itemsParaEscribir.length === 0) {
+        mostrarToast(`El catálogo base ya está al día (${omitidos.length} productos conservados sin duplicar).`);
+        return;
       }
-      mostrarToast(`Sincronización completa: ${agregados} productos agregados.`);
+
+      // 3. Ejecutar escrituras independientes con aislamiento de fallas por producto
+      const promesas = itemsParaEscribir.map(({ item, docId }) => {
+        return setDoc(doc(db, "productos", docId), {
+          nombre: item.nombre,
+          precio: item.precio,
+          categoria: item.categoria,
+          imagen: item.imagen,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        })
+        .then(() => ({ ok: true, item, docId }))
+        .catch(err => {
+          console.error(`Error escribiendo "${item.nombre}" (${docId}):`, err);
+          return {
+            ok: false,
+            item,
+            docId,
+            code: err.code || "unknown",
+            message: err.message || String(err)
+          };
+        });
+      });
+
+      const resultados = await Promise.all(promesas);
+
+      const creados = resultados.filter(r => r.ok);
+      const fallidos = resultados.filter(r => !r.ok);
+
+      // 4. Diagnóstico y reporte detallado
+      if (fallidos.length === 0) {
+        mostrarToast(`Sincronización completa: ${creados.length} creados, ${omitidos.length} omitidos.`);
+      } else {
+        console.error("Fallas durante sincronización:", fallidos);
+        const lineasError = fallidos.map(f => `• ${f.item.nombre}: [${f.code}] ${f.message}`).join("\n");
+        await mostrarAlertaModal({
+          titulo: "Sincronización parcial",
+          mensaje: `Resultado de la sincronización:\n` +
+                   `• Creados con éxito: ${creados.length}\n` +
+                   `• Omitidos (ya existían): ${omitidos.length}\n` +
+                   `• Fallidos: ${fallidos.length}\n\n` +
+                   `Detalle de los errores reportados por Firebase:\n${lineasError}`,
+          icono: "bi-exclamation-triangle-fill",
+          tipo: "advertencia"
+        });
+      }
     } catch (err) {
+      console.error("Error inesperado en sincronización:", err);
       handleFirestoreError(err, OperationType.WRITE, "productos");
     } finally {
       btnSembrar.disabled = false;

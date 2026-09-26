@@ -41,12 +41,16 @@ service cloud.firestore {
     // Validación de Pedido
     function isValidPedido(data) {
       return data.keys().hasAll(['items', 'total', 'createdAt']) &&
-        data.keys().hasOnly(['items', 'subtotal', 'costoEnvio', 'total', 'clienteNombre', 'clienteTelefono', 'clienteDireccion', 'tipoDestino', 'departamento', 'localidad', 'direccion', 'referencia', 'zonaEnvio', 'estado', 'numeroPedido', 'codigoPedido', 'envioACoordinar', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['items', 'subtotal', 'costoEnvio', 'total', 'clienteNombre', 'clienteTelefono', 'clienteDireccion', 'tipoDestino', 'departamento', 'localidad', 'direccion', 'referencia', 'zonaEnvio', 'estado', 'numeroPedido', 'codigoPedido', 'envioACoordinar', 'revisionRequerida', 'motivoRevision', 'totalCalculadoOficial', 'totalReportadoPorCliente', 'createdAt', 'updatedAt']) &&
         data.items is list && data.items.size() > 0 && data.items.size() <= 100 &&
         data.total is number && data.total >= 0 &&
         (!('subtotal' in data) || (data.subtotal is number && data.subtotal >= 0)) &&
         (!('costoEnvio' in data) || (data.costoEnvio is number && data.costoEnvio >= 0)) &&
         (!('envioACoordinar' in data) || data.envioACoordinar is bool) &&
+        (!('revisionRequerida' in data) || data.revisionRequerida is bool) &&
+        (!('motivoRevision' in data) || (data.motivoRevision is string && data.motivoRevision.size() <= 500)) &&
+        (!('totalCalculadoOficial' in data) || (data.totalCalculadoOficial is number && data.totalCalculadoOficial >= 0)) &&
+        (!('totalReportadoPorCliente' in data) || (data.totalReportadoPorCliente is number && data.totalReportadoPorCliente >= 0)) &&
         (!('clienteNombre' in data) || (data.clienteNombre is string && data.clienteNombre.size() >= 2 && data.clienteNombre.size() <= 100)) &&
         (!('clienteTelefono' in data) || (data.clienteTelefono is string && data.clienteTelefono.size() >= 6 && data.clienteTelefono.size() <= 50)) &&
         (!('clienteDireccion' in data) || (data.clienteDireccion is string && data.clienteDireccion.size() >= 3 && data.clienteDireccion.size() <= 300)) &&
@@ -82,29 +86,22 @@ service cloud.firestore {
         (!('createdAt' in data) || data.createdAt is timestamp);
     }
 
-    function isValidContadorIncrement(newData, oldData) {
-      return newData.keys().hasOnly(['ultimoNumero', 'updatedAt', 'createdAt']) &&
-        newData.ultimoNumero is number &&
-        (('ultimoNumero' in oldData && newData.ultimoNumero == oldData.ultimoNumero + 1) || (!('ultimoNumero' in oldData) && newData.ultimoNumero == 1)) &&
-        (!('updatedAt' in newData) || newData.updatedAt is timestamp) &&
-        (!('createdAt' in newData) || newData.createdAt is timestamp);
-    }
-
-    // Colección: Contadores (para secuencia atómica de pedidos)
+    // Colección: Contadores (secuencia atómica gestionada en Cloud Functions / Admin SDK)
+    // El cliente solo puede consultar lectura si es necesario; las mutaciones son exclusivas de administrador o Admin SDK
     match /contadores/{contadorId} {
       allow read: if contadorId == 'pedidos';
-      allow create: if contadorId == 'pedidos' && isValidContadorCreate(incoming());
-      allow update: if contadorId == 'pedidos' && (isAdmin() || isValidContadorIncrement(incoming(), existing()));
-      allow delete: if isAdmin() && contadorId == 'pedidos';
+      allow create, update, delete: if isAdmin() && contadorId == 'pedidos';
     }
 
     // Colección: Pedidos
-    // Cualquiera puede crear (sitio público), nadie puede leer/editar/borrar salvo el administrador con email específico
+    // Creación pública cerrada en Firestore: los pedidos se validan y crean a través de la Cloud Function (Admin SDK).
+    // Solo administradores autorizados pueden gestionar pedidos directamente.
     match /pedidos/{pedidoId} {
-      allow create: if isValidId(pedidoId) && isValidPedido(incoming());
+      allow create: if isAdmin() && isValidId(pedidoId) && isValidPedido(incoming());
       allow get, list: if isAdmin();
       allow update: if isAdmin() && isValidId(pedidoId) && isValidPedido(incoming());
       allow delete: if isAdmin() && isValidId(pedidoId);
     }
   }
 }
+

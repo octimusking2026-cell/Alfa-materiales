@@ -1210,12 +1210,36 @@ function abrirModalDetallePedido(pedido, codigo) {
         <h3 style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
           <i class="bi bi-receipt" style="color: var(--color-naranja);"></i> 
           ${escapar(codigo)}
+          ${pedido.revisionRequerida ? `<span class="badge-revision-requerida" style="font-size: 0.78rem;"><i class="bi bi-exclamation-triangle-fill"></i> Revisión requerida</span>` : ''}
           ${esCoordinar ? `<span class="badge-envio-coordinar" style="font-size: 0.78rem;"><i class="bi bi-telephone-outbound-fill"></i> A coordinar</span>` : ''}
         </h3>
         <button type="button" class="modal-cerrar" aria-label="Cerrar">&times;</button>
       </div>
 
       <div class="modal-detalle-pedido-cuerpo">
+        ${pedido.revisionRequerida ? `
+          <!-- Banner de Auditoría por Discrepancia de Precios / Precios Corregidos Oficiales -->
+          <div class="alerta-discrepancia-precios">
+            <div class="alerta-discrepancia-icono"><i class="bi bi-shield-exclamation"></i></div>
+            <div class="alerta-discrepancia-texto">
+              <strong style="color: #991b1b; font-size: 0.95rem; display: block; margin-bottom: 4px;">
+                ⚠️ Revisión requerida: Precios ajustados con el catálogo oficial
+              </strong>
+              <p style="margin: 0 0 8px 0; font-size: 0.88rem; color: #7f1d1d;">
+                ${escapar(pedido.motivoRevision || "Se detectó discrepancia entre el total informado desde el navegador del cliente y el cálculo oficial de Firestore.")}
+              </p>
+              <div class="alerta-discrepancia-comparativa">
+                <span class="tag-comparativa-cliente">
+                  Total reportado por cliente: <strong>${formatearPrecio(pedido.totalReportadoPorCliente)}</strong>
+                </span>
+                <span class="tag-comparativa-oficial">
+                  Total real de catálogo (cobrable): <strong>${formatearPrecio(pedido.totalCalculadoOficial || totalCalc)}</strong>
+                </span>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
         <!-- Tabla de Productos y Precios Congelados (Prioridad de preparación) -->
         <div style="overflow-x: auto;">
           <table class="tabla-items-pedido" style="margin-bottom: 0;">
@@ -1345,9 +1369,11 @@ function renderizarPedidos() {
     const estadoClave = (ped.estado || "pendiente").toLowerCase();
     const esCoordinar = ped.envioACoordinar === true || String(ped.tipoDestino || "").toLowerCase() === "otro";
 
-    // Filtro especial 'coordinar' o por estado: 'todos', 'pendiente', 'entregado' o 'cancelado'
+    // Filtro especial 'coordinar', 'revision' o por estado: 'todos', 'pendiente', 'entregado' o 'cancelado'
     if (filtroEstado === "coordinar") {
       if (!esCoordinar) return false;
+    } else if (filtroEstado === "revision") {
+      if (ped.revisionRequerida !== true) return false;
     } else if (filtroEstado !== "todos" && estadoClave !== filtroEstado) {
       return false;
     }
@@ -1394,7 +1420,7 @@ function renderizarPedidos() {
   filtrados.forEach((pedido, idx) => {
     const card = document.createElement("article");
     const esCoordinar = pedido.envioACoordinar === true || String(pedido.tipoDestino || "").toLowerCase() === "otro";
-    card.className = `tarjeta-pedido tarjeta-pedido-resumen ${esCoordinar ? 'tarjeta-pedido-coordinar' : ''}`;
+    card.className = `tarjeta-pedido tarjeta-pedido-resumen ${esCoordinar ? 'tarjeta-pedido-coordinar' : ''} ${pedido.revisionRequerida ? 'tarjeta-pedido-alerta-revision' : ''}`;
 
     const codigo = obtenerCodigoVisible(pedido, idx);
     const fechaFormateada = formatearFecha(pedido.createdAt);
@@ -1415,6 +1441,11 @@ function renderizarPedidos() {
           <span class="badge-estado badge-estado-${estadoClave}">
             <i class="bi ${estadoInfo.icono}"></i> ${estadoInfo.label}
           </span>
+          ${pedido.revisionRequerida ? `
+            <span class="badge-revision-requerida" title="${escapar(pedido.motivoRevision || 'Discrepancia detectada en precios')}">
+              <i class="bi bi-exclamation-triangle-fill"></i> Revisión requerida
+            </span>
+          ` : ''}
           ${esCoordinar ? `
             <span class="badge-envio-coordinar" title="Envío a convenir fuera de Eldorado — Llamar para cotizar">
               <i class="bi bi-telephone-outbound-fill"></i> A coordinar

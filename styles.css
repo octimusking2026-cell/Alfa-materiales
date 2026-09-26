@@ -2184,6 +2184,74 @@ textarea.envio-input {
   .modulo-envio-fletes {
     padding: 16px;
   }
+}/* ==========================================================================
+   Auditoría de Pedidos y Alertas de Discrepancia de Precios (Admin)
+   ========================================================================== */
+
+.badge-revision-requerida {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 2px rgba(185, 28, 28, 0.08);
 }
 
+.tarjeta-pedido-alerta-revision {
+  border-left: 4px solid #ef4444 !important;
+  background-color: #fffbfb;
+}
 
+.alerta-discrepancia-precios {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #dc2626;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 6px;
+}
+
+.alerta-discrepancia-icono {
+  font-size: 1.4rem;
+  color: #dc2626;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.alerta-discrepancia-texto {
+  flex: 1;
+}
+
+.alerta-discrepancia-comparativa {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+
+.tag-comparativa-cliente {
+  background: #ffffff;
+  border: 1px dashed #fca5a5;
+  color: #991b1b;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.tag-comparativa-oficial {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+  padding: 4px 10px;
+  border-radius: 6px;
+}

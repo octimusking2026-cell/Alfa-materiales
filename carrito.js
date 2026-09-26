@@ -5,15 +5,13 @@
 
 import { 
   db, 
-  firebaseConfig 
+  firebaseConfig,
+  crearPedidoCallable
 } from './firebase-init.js';
 
 import { 
-  collection, 
   doc, 
-  addDoc, 
-  runTransaction, 
-  serverTimestamp 
+  getDoc 
 } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 
 import { 
@@ -79,11 +77,15 @@ export function agregarAlCarrito(producto, cantidad = 1) {
 
   if (item) {
     item.cantidad += cantidad;
+    if (producto.categoria && !item.categoria) {
+      item.categoria = producto.categoria;
+    }
   } else {
     carrito.push({
       id: String(producto.id),
       nombre: producto.nombre,
       precio: Number(producto.precio),
+      categoria: producto.categoria || "",
       imagen: producto.imagen,
       cantidad,
     });
@@ -210,49 +212,14 @@ export function inicializarCarrito() {
 }
 
 /* ==========================================================================
-   Checkout público y guardado en Firestore (/pedidos)
+   Checkout seguro mediante Cloud Function (crearPedido)
    ========================================================================== */
-
-// Obtiene el número correlativo atómico para el pedido con fallback anti-colisión
-async function obtenerSiguienteNumeroPedido() {
-  const contadorRef = doc(db, "contadores", "pedidos");
-  
-  // Intento 1 y 2 con transacción atómica en Firestore
-  for (let intento = 0; intento < 2; intento++) {
-    try {
-      const nuevoNumero = await runTransaction(db, async (transaction) => {
-        const docSnap = await transaction.get(contadorRef);
-        let ultimo = 0;
-        if (docSnap.exists()) {
-          ultimo = Number(docSnap.data().ultimoNumero || 0);
-        }
-        const siguiente = ultimo + 1;
-        transaction.set(contadorRef, { ultimoNumero: siguiente, updatedAt: serverTimestamp() }, { merge: true });
-        return siguiente;
-      });
-      localStorage.setItem("alfa_ultimo_pedido_num", String(nuevoNumero));
-      return nuevoNumero;
-    } catch (err) {
-      if (intento === 0) {
-        await new Promise(res => setTimeout(res, 400));
-      } else {
-        console.warn("Aviso al obtener contador atómico en Firestore tras reintento, usando identificador único de resguardo:", err);
-      }
-    }
-  }
-
-  // Fallback anti-colisiones: Genera un número único derivado de la marca temporal (timestamp) y un factor aleatorio
-  // Evita que dos clientes desconectados o con problemas de red coincidan en el mismo número secuencial (ej: #0001)
-  const fallbackUnico = Math.floor((Date.now() % 900000) + (Math.random() * 90000) + 10000);
-  localStorage.setItem("alfa_ultimo_pedido_num", String(fallbackUnico));
-  return fallbackUnico;
-}
 
 export async function procesarCompraPublica() {
   // Evitar ejecuciones simultáneas o dobles clics
   if (procesandoPedido) return;
 
-  // Protección anti-spam / Rate-limit por dispositivo
+  // Protección anti-spam / Rate-limit local en el cliente
   const ultimoPedidoTimestamp = Number(localStorage.getItem("alfa_ultimo_pedido_ts") || 0);
   const ahora = Date.now();
   const segundosTranscurridos = Math.floor((ahora - ultimoPedidoTimestamp) / 1000);
@@ -277,6 +244,41 @@ export async function procesarCompraPublica() {
       tipo: "info"
     });
     return;
+  }
+
+  // Pre-verificación transparente de precios con /productos (aviso informativo de catálogo para UX)
+  let preciosModificadosEnCatalogo = false;
+  try {
+    for (const item of carrito) {
+      if (item.id) {
+        const prodDocRef = doc(db, "productos", String(item.id));
+        const prodDocSnap = await getDoc(prodDocRef);
+        if (prodDocSnap.exists()) {
+          const dataDoc = prodDocSnap.data();
+          const precioActual = Number(dataDoc?.precio || 0);
+          if (dataDoc?.categoria && item.categoria !== dataDoc.categoria) {
+            item.categoria = dataDoc.categoria;
+          }
+          if (Number(item.precio) !== precioActual) {
+            item.precio = precioActual;
+            preciosModificadosEnCatalogo = true;
+          }
+        }
+      }
+    }
+    if (preciosModificadosEnCatalogo) {
+      guardarCarrito(carrito);
+      renderizarCarrito();
+      await mostrarAlertaModal({
+        titulo: "PRECIOS ACTUALIZADOS",
+        mensaje: "Los precios de algunos productos se actualizaron con el catálogo oficial en tiempo real. Tu resumen y total fueron ajustados.",
+        icono: "bi-info-circle-fill",
+        tipo: "info"
+      });
+      return;
+    }
+  } catch (errCatalogo) {
+    console.warn("[CLIENTE] Advertencia al consultar precios de catálogo:", errCatalogo);
   }
 
   // 1. Validación de campo obligatorio "Barrio y Calle"
@@ -336,96 +338,41 @@ export async function procesarCompraPublica() {
   const botonFinalizar = document.querySelector(".carrito-acciones-derecha button");
   if (botonFinalizar) {
     botonFinalizar.disabled = true;
-    botonFinalizar.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Procesando pedido...`;
+    botonFinalizar.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Validando con el catálogo...`;
   }
 
   procesandoPedido = true;
 
   try {
-    // 1. Obtener número correlativo de pedido (PEDIDO #0001, PEDIDO #0002, etc.)
-    const numeroPedido = await obtenerSiguienteNumeroPedido();
-    const codigoPedido = formatearCodigoPedido(numeroPedido);
-
-    // 2. Congelar precios y productos tal como estaban al momento de la compra
-    const itemsCongelados = carrito.map(item => {
-      const p = Number(item.precio || 0);
-      const c = Number(item.cantidad || 1);
-      return {
+    // 4. Preparar payload seguro: Solo IDs, cantidades, datos de entrega y totalReportadoPorCliente para auditoría
+    const payloadCrearPedido = {
+      items: carrito.map(item => ({
         id: String(item.id),
-        nombre: String(item.nombre || "").slice(0, 150),
-        precio: p,
-        cantidad: c,
-        subtotal: p * c
-      };
-    });
-
-    // 3. Formulario y datos estructurados de entrega (tomados del primer input de dirección: barrioCalle)
-    const formularioEnvio = {
+        cantidad: Number(item.cantidad || 1)
+      })),
       tipoDestino: envioSeleccion.tipoDestino,
       departamento: envioSeleccion.tipoDestino === "eldorado" ? "Eldorado" : (deptoActualInfo?.nombre || envioSeleccion.deptoOtro || "Misiones"),
       localidad: envioSeleccion.tipoDestino === "eldorado" ? (configEnvios.zonasEldorado[envioSeleccion.zonaEldorado]?.nombre || "Eldorado") : envioSeleccion.localidadOtro,
-      direccion: barrioCalle,
-      referencia: detallesRef
+      zonaEnvio: envioSeleccion.tipoDestino === "eldorado" ? (configEnvios.zonasEldorado[envioSeleccion.zonaEldorado]?.nombre || "Km 1 a 6") : `${deptoActualInfo?.nombre || envioSeleccion.deptoOtro} — ${envioSeleccion.localidadOtro}`,
+      clienteNombre: nombreCliente,
+      clienteTelefono: telefonoCliente,
+      clienteDireccion: direccionCompleta,
+      referencia: detallesRef,
+      totalReportadoPorCliente: Number(calculo.total || 0)
     };
 
-    // 4. Construir objeto oficial del pedido para Firestore
-    const datosPedido = construirObjetoPedidoFirestore({
-      items: itemsCongelados,
-      cliente: {
-        nombre: nombreCliente,
-        telefono: telefonoCliente,
-        direccion: direccionCompleta
-      },
-      calculoEnvio: calculo,
-      formularioEnvio,
-      numeroPedido,
-      codigoPedido,
-      serverTimestamp
-    });
+    console.log("[CLIENTE] Enviando petición a Cloud Function crearPedido:", payloadCrearPedido);
 
-    console.log("[CLIENTE] Enviando pedido a Firestore colección /pedidos:", datosPedido);
+    const respuesta = await crearPedidoCallable(payloadCrearPedido);
+    const datosRespuesta = respuesta?.data || {};
 
-    let docRef;
-    try {
-      docRef = await addDoc(collection(db, "pedidos"), datosPedido);
-      console.log("[CLIENTE] Pedido confirmado en Firestore con ID:", docRef.id);
-    } catch (errFirestore) {
-      console.error("[CLIENTE] Error técnico al escribir en Firestore (/pedidos):", errFirestore);
-      
-      const errorMsgTecnico = errFirestore?.message || String(errFirestore);
-      const esServiceDisabled = errorMsgTecnico.includes("Cloud Firestore API has not been used") || 
-                                errorMsgTecnico.includes("SERVICE_DISABLED") ||
-                                errFirestore?.code === "permission-denied";
-
-      let explicacionAdicional = "";
-      if (esServiceDisabled) {
-        explicacionAdicional = `
-          <div style="margin-top: 12px; padding: 12px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; text-align: left; font-size: 0.88rem; color: #991b1b; line-height: 1.4;">
-            <strong>Causa en Firebase:</strong> La base de datos Cloud Firestore no está habilitada o creada en el proyecto <em>${firebaseConfig?.projectId || 'alfa-materiales'}</em>.<br><br>
-            <strong>Solución requerida:</strong> Ingresá a la consola de Firebase en tu proyecto, sección <strong>Firestore Database</strong> y hacé clic en <strong>"Crear base de datos"</strong>.
-          </div>
-        `;
-      }
-
-      await mostrarAlertaModal({
-        titulo: "NO SE PUDO REGISTRAR EL PEDIDO",
-        mensaje: `
-          Ocurrió un error de comunicación con Firestore y el pedido NO pudo ser guardado.
-          <br><br>
-          <div style="font-family: monospace; font-size: 0.85rem; background: #f3f4f6; padding: 8px 12px; border-radius: 4px; word-break: break-all; color: #374151; text-align: left;">
-            Error: ${escaparHtml(errorMsgTecnico)}
-          </div>
-          ${explicacionAdicional}
-        `,
-        icono: "bi-x-octagon-fill",
-        tipo: "error"
-      });
-
-      // No se guarda el pedido, no se limpia el carrito y no se muestra éxito
-      return;
+    if (!datosRespuesta.success) {
+      throw new Error(datosRespuesta.error || "No se pudo procesar el pedido en el servidor.");
     }
 
-    // 5. Limpiar el carrito y registrar marca de tiempo anti-spam ÚNICAMENTE después de confirmar que Firestore guardó el documento
+    const codigoPedido = datosRespuesta.codigoPedido || "PEDIDO CONFIRMADO";
+
+    // 5. Limpiar el carrito y registrar marca de tiempo anti-spam tras confirmación exitosa
     localStorage.setItem("alfa_ultimo_pedido_ts", String(Date.now()));
     guardarCarrito([]);
     renderizarCarrito();
@@ -435,10 +382,10 @@ export async function procesarCompraPublica() {
     if (inputDetallesRef) inputDetallesRef.value = "";
 
     // 6. Preparar enlace de consulta a WhatsApp (canal de consulta, NO para registrar pedido)
-    const mensajeConsulta = `Hola Alfa Materiales! Acabo de registrar mi ${codigoPedido} a nombre de ${nombreCliente} con entrega en ${datosPedido.clienteDireccion}.`;
+    const mensajeConsulta = `Hola Alfa Materiales! Acabo de registrar mi ${codigoPedido} a nombre de ${nombreCliente} con entrega en ${direccionCompleta}.`;
     const urlWhatsApp = `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(mensajeConsulta)}`;
 
-    // 7. Mostrar pantalla de éxito al cliente solo habiendo confirmado la escritura
+    // 7. Mostrar pantalla de éxito al cliente
     await mostrarModalExitoPedido({
       codigoPedido: codigoPedido,
       urlWhatsApp: urlWhatsApp,
@@ -446,10 +393,28 @@ export async function procesarCompraPublica() {
     });
 
   } catch (error) {
-    console.error("Error inesperado al procesar pedido:", error);
+    console.error("Error al registrar pedido mediante Cloud Function:", error);
+    let errorTitulo = "NO SE PUDO REGISTRAR EL PEDIDO";
+    let errorMsg = error?.message || String(error);
+
+    if (error?.code === "functions/resource-exhausted" || errorMsg.includes("pedidos recientes")) {
+      errorTitulo = "LÍMITE DE PEDIDOS ALCANZADO";
+      errorMsg = "Ya registramos pedidos recientes con este número de teléfono. Para evitar envíos duplicados o saturación, por favor esperá unos minutos o contactanos directamente por WhatsApp.";
+    } else if (error?.code === "functions/not-found" || errorMsg.includes("no existe en el catálogo")) {
+      errorTitulo = "CATÁLOGO DESACTUALIZADO";
+      errorMsg = "Uno o más productos seleccionados ya no están disponibles en el catálogo. Por favor actualizá la página y revisá tu carrito.";
+    } else if (error?.code === "functions/permission-denied" || errorMsg.includes("permission-denied")) {
+      errorTitulo = "ACCESO DENEGADO";
+      errorMsg = "La creación directa de pedidos está protegida. Tu pedido debe enviarse a través de los canales autorizados.";
+    }
+
     await mostrarAlertaModal({
-      titulo: "NO SE PUDO REGISTRAR EL PEDIDO",
-      mensaje: `Ocurrió un inconveniente inesperado: ${escaparHtml(error?.message || String(error))}`,
+      titulo: errorTitulo,
+      mensaje: `
+        <div style="font-size: 0.95rem; color: #374151; margin-bottom: 8px;">
+          ${escaparHtml(errorMsg)}
+        </div>
+      `,
       icono: "bi-exclamation-triangle-fill",
       tipo: "error"
     });
@@ -461,3 +426,4 @@ export async function procesarCompraPublica() {
     }
   }
 }
+

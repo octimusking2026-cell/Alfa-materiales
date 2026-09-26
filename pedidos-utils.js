@@ -51,6 +51,8 @@ function normalizarTexto(str) {
     .trim();
 }
 
+export const MINIMO_LADRILLOS_ENVIO_GRATIS = 150;
+
 /**
  * Determina si un producto individual corresponde a Cemento o Plasticor
  */
@@ -60,10 +62,70 @@ export function esCementoOPlasticor(item) {
 }
 
 /**
- * Regla de negocio especial:
- * Devuelve true si el pedido contiene ÚNICAMENTE cemento, plasticor o una combinación de ambos.
- * Si contiene algún otro producto (ej: ladrillos, barras de hierro, arena), devuelve false.
+ * Determina si un producto individual pertenece a la categoría 'otros' o es Cemento/Plasticor
  */
+export function esProductoCategoriaOtrosOCemento(item) {
+  const cat = (item?.categoria || "").toLowerCase().trim();
+  const nombreNorm = normalizarTexto(item?.nombre);
+  if (cat === "otros") return true;
+  if (esCementoOPlasticor(item)) return true;
+  if (
+    nombreNorm.includes("alambre") ||
+    nombreNorm.includes("alambron") ||
+    nombreNorm.includes("hierro") ||
+    nombreNorm.includes("varilla") ||
+    nombreNorm.includes("barra")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Determina si un producto individual es un ladrillo
+ */
+export function esLadrillo(item) {
+  const cat = (item?.categoria || "").toLowerCase().trim();
+  const nombreNorm = normalizarTexto(item?.nombre);
+  return cat === "ladrillos" || nombreNorm.includes("ladrillo") || nombreNorm.includes("peine");
+}
+
+/**
+ * Cuenta la cantidad total de unidades de productos tipo Ladrillo en el carrito
+ */
+export function contarLadrillosCarrito(carrito) {
+  if (!carrito || !Array.isArray(carrito)) return 0;
+  return carrito.reduce((acc, item) => {
+    return esLadrillo(item) ? acc + Number(item.cantidad || 0) : acc;
+  }, 0);
+}
+
+/**
+ * Devuelve true si el carrito contiene AL MENOS UN producto de Cemento, Plasticor o categoría 'Otros'
+ */
+export function tieneProductosConRestriccionLadrillos(carrito) {
+  if (!carrito || !Array.isArray(carrito) || carrito.length === 0) return false;
+  return carrito.some(item => esProductoCategoriaOtrosOCemento(item));
+}
+
+/**
+ * Regla de negocio de envío gratis:
+ * Si el pedido contiene Cemento, Plasticor o cualquier producto de la categoría 'Otros',
+ * es condición OBLIGATORIA tener un mínimo de 150 ladrillos para acceder a envío gratis.
+ * Si no hay al menos 150 ladrillos entremedio, NO IMPORTA el monto del carrito, el flete se cobra siempre.
+ */
+export function requiereMinimoLadrillosEnvioGratis(carrito) {
+  if (!carrito || !Array.isArray(carrito) || carrito.length === 0) return false;
+  const tieneRestringidos = tieneProductosConRestriccionLadrillos(carrito);
+  const totalLadrillos = contarLadrillosCarrito(carrito);
+  return tieneRestringidos && totalLadrillos < MINIMO_LADRILLOS_ENVIO_GRATIS;
+}
+
+// Alias de retrocompatibilidad
+export function contieneSoloOtrosOCementoSinMinimoLadrillos(carrito) {
+  return requiereMinimoLadrillosEnvioGratis(carrito);
+}
+
 export function contieneSoloCementoOPlasticor(carrito) {
   if (!carrito || !Array.isArray(carrito) || carrito.length === 0) return false;
   return carrito.every(item => esCementoOPlasticor(item));
@@ -80,7 +142,7 @@ export const configEnvios = {
     km1_6: {
       id: "km1_6",
       nombre: "Km 1 a 6",
-      costoFlete: 15000,
+      costoFlete: 20000,
       pedidoMinimo: 0,
       minLadrillos: 0
     },
@@ -102,7 +164,7 @@ export const configEnvios = {
     km1_7: {
       id: "km1_6",
       nombre: "Km 1 a 6",
-      costoFlete: 15000,
+      costoFlete: 20000,
       pedidoMinimo: 0,
       minLadrillos: 0
     },
@@ -247,24 +309,11 @@ export function obtenerInfoDepartamento(claveONombre) {
 }
 
 /**
- * Cuenta la cantidad total de unidades de productos tipo Ladrillo en el carrito
- */
-export function contarLadrillosCarrito(carrito) {
-  if (!carrito || !Array.isArray(carrito)) return 0;
-  return carrito.reduce((acc, item) => {
-    const cat = (item.categoria || "").toLowerCase();
-    const nombre = (item.nombre || "").toLowerCase();
-    const esLadrillo = cat === "ladrillos" || nombre.includes("ladrillo");
-    return esLadrillo ? acc + Number(item.cantidad || 0) : acc;
-  }, 0);
-}
-
-/**
  * Valida reglas de flete y calcula costo total de envío en tiempo real
  * @param {Object} params
  * @param {Array} params.carrito - Array de productos del carrito
  * @param {string} params.tipoDestino - "eldorado" o "otro"
- * @param {string} params.zonaEldorado - Clave de zona en Eldorado (ej: "centro_km8_10")
+ * @param {string} params.zonaEldorado - Clave de zona en Eldorado (ej: "km1_6")
  * @param {string} params.deptoOtro - Clave de departamento de Misiones (ej: "gral_san_martin")
  * @param {string} params.localidadOtro - Nombre de la localidad seleccionada (ej: "Capioví")
  * @returns {Object} { valido, error, subtotal, costoEnvio, total, esGratis, aviso, totalLadrillos, datosEnvio }
@@ -301,36 +350,54 @@ export function validarYCalcularEnvio({
     localidad = zonaInfo.nombre;
 
     const fleteBase = zonaInfo.costoFlete;
+    const restriccionLadrillosActiva = requiereMinimoLadrillosEnvioGratis(items);
+    const faltanteParaEnvioGratis = UMBRAL_ENVIO_GRATIS - subtotal;
+    const cercaDeEnvioGratis = faltanteParaEnvioGratis > 0 && faltanteParaEnvioGratis <= 20000;
 
-    // Dentro de Eldorado rige la política de flete gratis a partir de $300.000 (excepto solo Cemento/Plasticor)
-    if (soloCementoPlasticor) {
+    // Regla: si el carrito tiene cemento, plasticor o cualquier producto de 'otros',
+    // NO IMPORTA EL MONTO DEL CARRITO, si no hay al menos 150 ladrillos se cobra el envío.
+    if (restriccionLadrillosActiva) {
       costoEnvio = fleteBase;
       esGratis = false;
-      aviso = {
-        texto: `Flete en Eldorado (${nombreZona}): ${formatearPrecio(fleteBase)}. Los pedidos exclusivamente de Cemento o Plasticor no acceden a envío gratis.`,
-        clase: "pago"
-      };
+      const ladrillosFaltantes = Math.max(0, MINIMO_LADRILLOS_ENVIO_GRATIS - totalLadrillos);
+
+      if (subtotal >= UMBRAL_ENVIO_GRATIS) {
+        aviso = {
+          texto: `Flete en Eldorado (${nombreZona}): ${formatearPrecio(fleteBase)}. Los pedidos con Cemento, Plasticor o categoría 'Otros' requieren incluir al menos 150 ladrillos para acceder a envío gratis (faltan ${ladrillosFaltantes} ladrillos).`,
+          clase: "pago"
+        };
+      } else if (cercaDeEnvioGratis) {
+        const faltante = formatearPrecio(faltanteParaEnvioGratis);
+        aviso = {
+          texto: `¡Estás cerca en monto! Si sumás ${faltante} más y alcanzás un mínimo de 150 ladrillos, el envío es incluido en Eldorado.`,
+          clase: "cerca"
+        };
+      } else {
+        aviso = {
+          texto: `Flete en Eldorado (${nombreZona}): ${formatearPrecio(fleteBase)}.`,
+          clase: "pago"
+        };
+      }
     } else if (subtotal >= UMBRAL_ENVIO_GRATIS) {
       costoEnvio = 0;
       esGratis = true;
       aviso = {
-        texto: "🎉 ¡Tu envío es gratis en Eldorado!",
+        texto: "🎉 ¡Tu envío es incluido en Eldorado!",
         clase: "incluido"
       };
-    } else if (subtotal >= UMBRAL_AVISO_CERCA) {
+    } else if (cercaDeEnvioGratis) {
       costoEnvio = fleteBase;
       esGratis = false;
-      const faltante = formatearPrecio(UMBRAL_ENVIO_GRATIS - subtotal);
+      const faltante = formatearPrecio(faltanteParaEnvioGratis);
       aviso = {
-        texto: `¡Estás cerca del envío gratis! Sumá ${faltante} más y tu envío será gratis en Eldorado.`,
+        texto: `¡Estás cerca del envío gratis! Si sumás ${faltante} más, el envío es incluido en Eldorado.`,
         clase: "cerca"
       };
     } else {
       costoEnvio = fleteBase;
       esGratis = false;
-      const faltante = formatearPrecio(UMBRAL_ENVIO_GRATIS - subtotal);
       aviso = {
-        texto: `Flete en Eldorado (${nombreZona}): ${formatearPrecio(fleteBase)}. (Sumá ${faltante} más para envío gratis).`,
+        texto: `Flete en Eldorado (${nombreZona}): ${formatearPrecio(fleteBase)}.`,
         clase: "pago"
       };
     }
@@ -372,17 +439,45 @@ export function validarYCalcularEnvio({
 }
 
 /**
+ * Evalúa si existe discrepancia significativa entre el total informado por el cliente y el oficial.
+ * @param {Object} params
+ * @param {number} params.totalReportadoPorCliente - Total que calculó la UI del cliente
+ * @param {number} params.totalCalculadoOficial - Total real verificado con el catálogo oficial
+ * @returns {Object} { revisionRequerida: boolean, diferencia: number, motivoRevision: string|null }
+ */
+export function evaluarDiscrepanciaPrecios({ totalReportadoPorCliente, totalCalculadoOficial }) {
+  const reportado = Number(totalReportadoPorCliente || 0);
+  const oficial = Number(totalCalculadoOficial || 0);
+  const diferencia = Math.abs(reportado - oficial);
+
+  // Consideramos discrepancia si la diferencia absoluta supera $1 (tolerancia a redondeos de céntimos)
+  const revisionRequerida = diferencia > 1;
+  const motivoRevision = revisionRequerida
+    ? `Discrepancia de precios: el cliente reportó ${formatearPrecio(reportado)} pero el catálogo oficial suma ${formatearPrecio(oficial)} (Diferencia: ${formatearPrecio(diferencia)}).`
+    : null;
+
+  return {
+    revisionRequerida,
+    diferencia,
+    motivoRevision
+  };
+}
+
+/**
  * Estructura del Pedido para Firestore:
  * Recopila y normaliza todos los datos del pedido para guardarlo en Cloud Firestore (/pedidos).
- * Incluye: departamento, localidad, direccion, referencia y costoEnvio.
+ * Incluye auditoría server-side: totalReportadoPorCliente, totalCalculadoOficial y revisionRequerida.
  * 
  * @param {Object} params
- * @param {Array} params.items - Productos congelados del carrito
+ * @param {Array} params.items - Productos congelados del catálogo oficial
  * @param {Object} params.cliente - { nombre, telefono, direccion }
  * @param {Object} params.calculoEnvio - Resultado de validarYCalcularEnvio()
  * @param {Object} params.formularioEnvio - { tipoDestino, departamento, localidad, direccion, referencia }
  * @param {number} params.numeroPedido - Número correlativo entero (ej: 1, 2, 3...)
  * @param {string} params.codigoPedido - Código visible formateado (ej: "PEDIDO #0001")
+ * @param {number} [params.totalReportadoPorCliente] - Total informado por el cliente para contraste
+ * @param {boolean} [params.revisionRequerida] - Flag que indica si requiere revisión administrativa
+ * @param {string} [params.motivoRevision] - Explicación de la revisión si aplica
  * @param {any} params.serverTimestamp - Función o timestamp de Firestore
  * @returns {Object} Objeto con las propiedades requeridas y permitidas por firestore.rules
  */
@@ -393,6 +488,9 @@ export function construirObjetoPedidoFirestore({
   formularioEnvio,
   numeroPedido,
   codigoPedido,
+  totalReportadoPorCliente = null,
+  revisionRequerida = false,
+  motivoRevision = "",
   serverTimestamp
 }) {
   const tipoDest = String(formularioEnvio?.tipoDestino || "eldorado");
@@ -413,6 +511,10 @@ export function construirObjetoPedidoFirestore({
   const costoEnvio = esOtro ? 0 : Number(calculoEnvio?.costoEnvio || 0);
   const total = esOtro ? subtotal : Number(calculoEnvio?.total || (subtotal + costoEnvio));
 
+  const reportado = totalReportadoPorCliente !== null && totalReportadoPorCliente !== undefined 
+    ? Number(totalReportadoPorCliente) 
+    : total;
+
   const pedidoData = {
     numeroPedido: Number(numeroPedido),
     codigoPedido: String(codigoPedido),
@@ -429,6 +531,10 @@ export function construirObjetoPedidoFirestore({
     subtotal: subtotal,
     costoEnvio: costoEnvio,
     total: total,
+    totalCalculadoOficial: total,
+    totalReportadoPorCliente: reportado,
+    revisionRequerida: Boolean(revisionRequerida),
+    motivoRevision: String(motivoRevision || "").slice(0, 500),
     estado: "pendiente",
     createdAt: typeof serverTimestamp === "function" ? serverTimestamp() : (serverTimestamp || new Date())
   };

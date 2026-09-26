@@ -72,6 +72,22 @@
           "enum": ["pendiente", "en_camino", "completado", "cancelado"],
           "description": "Estado del pedido"
         },
+        "revisionRequerida": {
+          "type": "boolean",
+          "description": "Indica si el pedido requiere revisión por discrepancia de precios"
+        },
+        "motivoRevision": {
+          "type": "string",
+          "description": "Detalle explicativo de la discrepancia de precios si aplica"
+        },
+        "totalCalculadoOficial": {
+          "type": "number",
+          "description": "Monto total real calculado por el backend con catálogo oficial"
+        },
+        "totalReportadoPorCliente": {
+          "type": "number",
+          "description": "Monto total informado por el cliente para auditoría de discrepancias"
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",
@@ -88,7 +104,7 @@
     },
     "/pedidos/{pedidoId}": {
       "schema": "Pedido",
-      "description": "Colección de pedidos recibidos, creable públicamente y legible solo por el administrador"
+      "description": "Colección de pedidos recibidos, creable exclusivamente por backend / Admin SDK y legible solo por el administrador"
     }
   }
 }

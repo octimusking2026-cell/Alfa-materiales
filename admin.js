@@ -149,6 +149,12 @@ function escapar(str) {
    Autenticación (Restringida a ADMIN_EMAILS)
    ========================================================================== */
 
+function esAdminEmail(email) {
+  if (!email || typeof email !== "string") return false;
+  const normalizado = email.trim().toLowerCase();
+  return ADMIN_EMAILS.some(adm => adm.trim().toLowerCase() === normalizado);
+}
+
 function inicializarAuth() {
   const formLogin = document.getElementById("form-login");
   const inputEmail = document.getElementById("login-email");
@@ -164,14 +170,15 @@ function inicializarAuth() {
     errorMsg.style.display = "none";
     successMsg.style.display = "none";
 
-    const email = inputEmail.value.trim().toLowerCase();
+    const email = (inputEmail?.value || "").trim().toLowerCase();
+    const password = inputPassword?.value || "";
     if (!email || !password) {
       errorMsg.textContent = "Por favor, completá tu correo y contraseña.";
       errorMsg.style.display = "block";
       return;
     }
 
-    if (!ADMIN_EMAILS.includes(email)) {
+    if (!esAdminEmail(email)) {
       errorMsg.textContent = "Este panel de administración es exclusivo para administradores autorizados.";
       errorMsg.style.display = "block";
       return;
@@ -184,7 +191,7 @@ function inicializarAuth() {
       console.error("Error al iniciar sesión:", err);
       let mensaje = "No se pudo iniciar sesión. Verificá tu contraseña.";
       if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password") {
-        mensaje = "Contraseña incorrecta. Podés solicitar un enlace de restablecimiento abajo.";
+        mensaje = "Contraseña incorrecta. Podés solicitar un enlace de restablecimiento abajo o ingresar con Google.";
       } else if (err.code === "auth/user-not-found") {
         mensaje = "El usuario no fue encontrado en Firebase Auth.";
       } else if (err.code === "auth/invalid-email") {
@@ -204,13 +211,13 @@ function inicializarAuth() {
   btnReset?.addEventListener("click", async () => {
     errorMsg.style.display = "none";
     successMsg.style.display = "none";
-    const email = inputEmail.value.trim();
+    const email = (inputEmail?.value || "").trim();
     if (!email) {
       errorMsg.textContent = "Por favor, ingresá tu correo electrónico para restablecer la contraseña.";
       errorMsg.style.display = "block";
       return;
     }
-    if (!ADMIN_EMAILS.includes(email.toLowerCase())) {
+    if (!esAdminEmail(email)) {
       errorMsg.textContent = "Este panel de administración es exclusivo para administradores autorizados.";
       errorMsg.style.display = "block";
       return;
@@ -268,8 +275,8 @@ function inicializarAuth() {
 
     if (user) {
       // Verificar si es un usuario autorizado
-      const emailUsuario = (user.email || "").toLowerCase();
-      if (!ADMIN_EMAILS.includes(emailUsuario)) {
+      const emailUsuario = user.email || "";
+      if (!esAdminEmail(emailUsuario)) {
         await mostrarAlertaModal({
           titulo: "Acceso denegado",
           mensaje: "Acceso denegado: este panel es exclusivo para administradores autorizados.",

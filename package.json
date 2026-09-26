@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "express": "^4.21.2",
-    "firebase": "^12.19.0"
+    "firebase": "^12.19.0",
+    "firebase-admin": "^14.5.0"
   },
   "devDependencies": {
     "@firebase/eslint-plugin-security-rules": "^0.0.2",

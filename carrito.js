@@ -5,8 +5,7 @@
 
 import { 
   db, 
-  firebaseConfig,
-  crearPedidoCallable
+  firebaseConfig
 } from './firebase-init.js';
 
 import { 
@@ -361,13 +360,20 @@ export async function procesarCompraPublica() {
       totalReportadoPorCliente: Number(calculo.total || 0)
     };
 
-    console.log("[CLIENTE] Enviando petición a Cloud Function crearPedido:", payloadCrearPedido);
+    console.log("[CLIENTE] Enviando petición a Netlify Function crear-pedido:", payloadCrearPedido);
 
-    const respuesta = await crearPedidoCallable(payloadCrearPedido);
-    const datosRespuesta = respuesta?.data || {};
+    const respuestaHttp = await fetch('/.netlify/functions/crear-pedido', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payloadCrearPedido)
+    });
 
-    if (!datosRespuesta.success) {
-      throw new Error(datosRespuesta.error || "No se pudo procesar el pedido en el servidor.");
+    const datosRespuesta = await respuestaHttp.json().catch(() => ({}));
+
+    if (!respuestaHttp.ok || !datosRespuesta.success) {
+      const errorFetch = new Error(datosRespuesta.error || "No se pudo procesar el pedido en el servidor.");
+      errorFetch.code = datosRespuesta.code || "INTERNAL";
+      throw errorFetch;
     }
 
     const codigoPedido = datosRespuesta.codigoPedido || "PEDIDO CONFIRMADO";
@@ -393,19 +399,16 @@ export async function procesarCompraPublica() {
     });
 
   } catch (error) {
-    console.error("Error al registrar pedido mediante Cloud Function:", error);
+    console.error("Error al registrar pedido mediante Netlify Function:", error);
     let errorTitulo = "NO SE PUDO REGISTRAR EL PEDIDO";
     let errorMsg = error?.message || String(error);
 
-    if (error?.code === "functions/resource-exhausted" || errorMsg.includes("pedidos recientes")) {
+    if (error?.code === "RATE_LIMIT" || errorMsg.includes("pedidos recientes")) {
       errorTitulo = "LÍMITE DE PEDIDOS ALCANZADO";
       errorMsg = "Ya registramos pedidos recientes con este número de teléfono. Para evitar envíos duplicados o saturación, por favor esperá unos minutos o contactanos directamente por WhatsApp.";
-    } else if (error?.code === "functions/not-found" || errorMsg.includes("no existe en el catálogo")) {
+    } else if (error?.code === "NOT_FOUND" || errorMsg.includes("no existe en el catálogo")) {
       errorTitulo = "CATÁLOGO DESACTUALIZADO";
       errorMsg = "Uno o más productos seleccionados ya no están disponibles en el catálogo. Por favor actualizá la página y revisá tu carrito.";
-    } else if (error?.code === "functions/permission-denied" || errorMsg.includes("permission-denied")) {
-      errorTitulo = "ACCESO DENEGADO";
-      errorMsg = "La creación directa de pedidos está protegida. Tu pedido debe enviarse a través de los canales autorizados.";
     }
 
     await mostrarAlertaModal({

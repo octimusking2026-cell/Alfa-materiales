@@ -20,10 +20,6 @@ import {
   ReCaptchaV3Provider 
 } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app-check.js';
 
-import { 
-  getFunctions, 
-  httpsCallable 
-} from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js';
 
 export const firebaseConfig = {
   apiKey: "AIzaSyDALHXJ6Ip17vp1iSDpbLuhbvWGqNG6cos",
@@ -44,8 +40,6 @@ export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const storage = getStorage(app, firebaseConfig.storageBucket);
-export const functions = getFunctions(app, "us-central1");
-export const crearPedidoCallable = httpsCallable(functions, "crearPedido");
 
 // Inicialización de Firebase App Check (reCAPTCHA v3) si está configurado en el entorno
 export let appCheck = null;

@@ -1,30 +1,51 @@
-// netlify/functions/crear-pedido.js
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
-function inicializarFirebaseAdmin() {
-  if (!getApps().length) {
-    const saEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-    if (saEnv) {
-      try {
-        const serviceAccount = typeof saEnv === "string" ? JSON.parse(saEnv) : saEnv;
-        initializeApp({ credential: cert(serviceAccount) });
-      } catch (err) {
-        console.error("Error al parsear FIREBASE_SERVICE_ACCOUNT_JSON:", err);
-        throw new Error("FIREBASE_SERVICE_ACCOUNT_INVALID");
-      }
+// Objeto de compatibilidad con interfaz admin estándar
+const admin = {
+  get apps() {
+    return getApps();
+  },
+  initializeApp,
+  credential: {
+    cert
+  },
+  firestore: getFirestore
+};
+
+// Inicialización controlada de Firebase Admin
+let db;
+try {
+  if (!admin.apps.length) {
+    const rawEnv = process.env.JSON_DE_CUENTA_DE_SERVICIO_DE_FIREBASE || process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    if (!rawEnv) {
+      console.error(
+        "[FIREBASE ADMIN] Error: La variable de entorno JSON_DE_CUENTA_DE_SERVICIO_DE_FIREBASE no está definida en Netlify."
+      );
     } else {
-      // Fallback si no está configurada la variable en local
-      try {
-        initializeApp();
-      } catch (err) {
-        console.warn("Firebase Admin sin credenciales explícitas:", err.message);
+      // Parsear obligatoriamente la cadena a objeto JSON
+      const serviceAccount = typeof rawEnv === "string" ? JSON.parse(rawEnv) : rawEnv;
+      // Normalizar saltos de línea en clave privada si vinieron escapados
+      if (serviceAccount?.private_key && typeof serviceAccount.private_key === "string" && serviceAccount.private_key.includes("\\n")) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
       }
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log("[FIREBASE ADMIN] Inicializado exitosamente con cuenta de servicio para el proyecto:", serviceAccount.project_id);
     }
   }
-  return getFirestore();
+  if (admin.apps.length) {
+    db = admin.firestore();
+  }
+} catch (error) {
+  console.error(
+    "[FIREBASE ADMIN] Error al parsear JSON_DE_CUENTA_DE_SERVICIO_DE_FIREBASE o inicializar Firebase Admin:",
+    error
+  );
 }
 
+// Parámetros y reglas oficiales de negocio
 const UMBRAL_ENVIO_GRATIS = 300000;
 const COSTO_FLETE_KM1_6 = 20000;
 const COSTO_FLETE_KM7_12 = 20000;
@@ -95,16 +116,31 @@ export default async (req) => {
     return jsonResponse(405, { success: false, code: "METHOD_NOT_ALLOWED", error: "Método no permitido." });
   }
 
-  let db;
-  try {
-    db = inicializarFirebaseAdmin();
-  } catch (errInit) {
-    console.error("Error inicializando Firebase Admin:", errInit);
-    return jsonResponse(500, {
-      success: false,
-      code: "CONFIG_ERROR",
-      error: "Error en la configuración del servidor (FIREBASE_SERVICE_ACCOUNT_JSON no válida o ausente)."
-    });
+  // Garantizar inicialización de DB si aún no está lista
+  if (!db) {
+    try {
+      if (!admin.apps.length) {
+        const rawEnv = process.env.JSON_DE_CUENTA_DE_SERVICIO_DE_FIREBASE || process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+        if (!rawEnv) {
+          throw new Error("Variable de entorno JSON_DE_CUENTA_DE_SERVICIO_DE_FIREBASE ausente en Netlify.");
+        }
+        const serviceAccount = typeof rawEnv === "string" ? JSON.parse(rawEnv) : rawEnv;
+        if (serviceAccount?.private_key && typeof serviceAccount.private_key === "string" && serviceAccount.private_key.includes("\\n")) {
+          serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+        }
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount)
+        });
+      }
+      db = admin.firestore();
+    } catch (errInit) {
+      console.error("[FIREBASE ADMIN] Falló la conexión con la cuenta de servicio:", errInit);
+      return jsonResponse(500, {
+        success: false,
+        code: "FIREBASE_INIT_ERROR",
+        error: "Error interno: No se pudo conectar a la base de datos de Firebase. Verifique la variable JSON_DE_CUENTA_DE_SERVICIO_DE_FIREBASE."
+      });
+    }
   }
 
   let data;
@@ -131,6 +167,7 @@ export default async (req) => {
   if (!itemsSolicitados || !Array.isArray(itemsSolicitados) || itemsSolicitados.length === 0) {
     return jsonResponse(400, { success: false, code: "INVALID_ARGUMENT", error: "El pedido debe contener al menos un producto." });
   }
+
   if (itemsSolicitados.length > 100) {
     return jsonResponse(400, { success: false, code: "INVALID_ARGUMENT", error: "El pedido no puede superar 100 productos diferentes." });
   }
@@ -159,6 +196,7 @@ export default async (req) => {
       if (!id || !/^[a-zA-Z0-9_\-]+$/.test(id)) {
         return jsonResponse(400, { success: false, code: "INVALID_ARGUMENT", error: `Identificador de producto inválido: "${id}".` });
       }
+
       if (!Number.isInteger(cantidad) || cantidad <= 0 || cantidad > 50000) {
         return jsonResponse(400, { success: false, code: "INVALID_ARGUMENT", error: `Cantidad no válida para el producto ${id}.` });
       }
@@ -170,6 +208,7 @@ export default async (req) => {
 
       const prodData = prodDoc.data() || {};
       const precioOficial = Number(prodData.precio || 0);
+
       if (isNaN(precioOficial) || precioOficial < 0) {
         return jsonResponse(500, { success: false, code: "INTERNAL", error: `El precio oficial del producto ${prodData.nombre || id} es inválido.` });
       }
@@ -189,10 +228,10 @@ export default async (req) => {
     }
   } catch (err) {
     console.error("Error consultando catálogo:", err);
-    return jsonResponse(500, { success: false, code: "INTERNAL", error: "Error interno al validar el catálogo." });
+    return jsonResponse(500, { success: false, code: "INTERNAL", error: "Error interno al validar el catálogo contra Firestore." });
   }
 
-  // 3. Calcular costo de flete oficial
+  // 3. Calcular costo de flete oficial según reglas vigentes
   let costoEnvioOficial = 0;
   const esOtro = tipoDestino === "otro";
 
@@ -214,7 +253,7 @@ export default async (req) => {
 
   const totalCalculadoOficial = subtotalOficial + costoEnvioOficial;
 
-  // 4. Auditoría de discrepancia
+  // 4. Auditoría de discrepancias (precios en cliente vs. catálogo oficial)
   const reportado = totalReportadoPorCliente !== null && totalReportadoPorCliente !== undefined
     ? Number(totalReportadoPorCliente)
     : totalCalculadoOficial;
@@ -224,7 +263,7 @@ export default async (req) => {
     ? `Discrepancia detectada: el cliente reportó $${reportado.toLocaleString("es-AR")} y el catálogo oficial sumó $${totalCalculadoOficial.toLocaleString("es-AR")} (Diferencia: $${diferencia.toLocaleString("es-AR")}).`
     : "";
 
-  // 5. Transacción atómica: rate limiting + contador + creación de pedido
+  // 5. Transacción atómica: rate limiting por teléfono (3 cada 10 min) + contador correlativo + creación de pedido
   const rateLimitRef = db.collection("rate_limits").doc(telLimpio);
   const contadorRef = db.collection("contadores").doc("pedidos");
   const nuevoPedidoRef = db.collection("pedidos").doc();
@@ -236,7 +275,6 @@ export default async (req) => {
     await db.runTransaction(async (transaction) => {
       const rateLimitSnap = await transaction.get(rateLimitRef);
       const contadorSnap = await transaction.get(contadorRef);
-
       const ahoraMs = Date.now();
       const DIEZ_MINUTOS_MS = 10 * 60 * 1000;
       let nuevoCount = 1;
@@ -246,7 +284,6 @@ export default async (req) => {
         const rlData = rateLimitSnap.data() || {};
         primerEnvioMs = Number(rlData.primerEnvio || ahoraMs);
         const cantidad = Number(rlData.cantidad || 0);
-
         if (ahoraMs - primerEnvioMs < DIEZ_MINUTOS_MS) {
           if (cantidad >= 3) {
             const err = new Error("RATE_LIMIT");
@@ -267,21 +304,28 @@ export default async (req) => {
       numeroPedidoFinal = ultimoNumero + 1;
       codigoPedidoFinal = `PEDIDO #${String(numeroPedidoFinal).padStart(4, "0")}`;
 
-      transaction.set(rateLimitRef, {
-        primerEnvio: primerEnvioMs,
-        ultimoEnvio: FieldValue.serverTimestamp(),
-        cantidad: nuevoCount
-      }, { merge: true });
+      transaction.set(
+        rateLimitRef,
+        {
+          primerEnvio: primerEnvioMs,
+          ultimoEnvio: FieldValue.serverTimestamp(),
+          cantidad: nuevoCount
+        },
+        { merge: true }
+      );
 
-      transaction.set(contadorRef, {
-        ultimoNumero: numeroPedidoFinal,
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
+      transaction.set(
+        contadorRef,
+        {
+          ultimoNumero: numeroPedidoFinal,
+          updatedAt: FieldValue.serverTimestamp()
+        },
+        { merge: true }
+      );
 
       const refLimpia = String(referencia || "").trim().slice(0, 300);
       const locLimpia = String(localidad || "Eldorado").slice(0, 100);
       const deptoLimpio = String(departamento || (esOtro ? "Misiones" : "Eldorado")).slice(0, 100);
-
       const direccionCompleta = refLimpia
         ? `${direccionLimpia}, ${locLimpia} (${deptoLimpio}) — Ref: ${refLimpia}`
         : `${direccionLimpia}, ${locLimpia} (${deptoLimpio})`;
@@ -311,7 +355,6 @@ export default async (req) => {
       };
 
       if (esOtro) pedidoDocData.envioACoordinar = true;
-
       transaction.set(nuevoPedidoRef, pedidoDocData);
     });
   } catch (err) {

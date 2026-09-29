@@ -23,18 +23,21 @@
                 <h1 class="logo">Alfa Materiales</h1>
             </header>
             <nav>
-                <ul>
+                <ul id="menu-categorias-lista">
                     <li>
-                        <button class="boton-menu boton-categoria active"><i class="bi bi-hand-index"></i>Todos los productos</button>
+                        <button class="boton-menu boton-categoria active" data-categoria="todos"><i class="bi bi-hand-index"></i>Todos los productos</button>
                     </li>
                     <li>
-                        <button class="boton-menu boton-categoria">Ladrillos</button>
+                        <button class="boton-menu boton-categoria" data-categoria="combos">Combos</button>
                     </li>
                     <li>
-                        <button class="boton-menu boton-categoria">Áridos y Aglomerantes</button>
+                        <button class="boton-menu boton-categoria" data-categoria="ladrillos">Ladrillos</button>
                     </li>
                     <li>
-                        <button class="boton-menu boton-categoria">Otros</button>
+                        <button class="boton-menu boton-categoria" data-categoria="aridos">Áridos y Aglomerantes</button>
+                    </li>
+                    <li>
+                        <button class="boton-menu boton-categoria" data-categoria="otros">Otros</button>
                     </li>
                     <li>
                         <a class="boton-menu boton-carrito" href="carrito.html"><i class="bi bi-cart"></i>Carrito<span class="numerito">0</span></a>

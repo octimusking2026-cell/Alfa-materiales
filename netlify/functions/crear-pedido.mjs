@@ -1,3 +1,4 @@
+// netlify/functions/crear-pedido.mjs
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
@@ -18,23 +19,22 @@ let db;
 try {
   if (!admin.apps.length) {
     const rawEnv = process.env.JSON_DE_CUENTA_DE_SERVICIO_DE_FIREBASE || process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-    if (!rawEnv) {
-      console.error(
-        "[FIREBASE ADMIN] Error: La variable de entorno JSON_DE_CUENTA_DE_SERVICIO_DE_FIREBASE no está definida en Netlify."
-      );
-    } else {
-      // Parsear obligatoriamente la cadena a objeto JSON
+
+    if (rawEnv) {
       const serviceAccount = typeof rawEnv === "string" ? JSON.parse(rawEnv) : rawEnv;
+
       // Normalizar saltos de línea en clave privada si vinieron escapados
       if (serviceAccount?.private_key && typeof serviceAccount.private_key === "string" && serviceAccount.private_key.includes("\\n")) {
         serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
       }
+
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });
       console.log("[FIREBASE ADMIN] Inicializado exitosamente con cuenta de servicio para el proyecto:", serviceAccount.project_id);
     }
   }
+
   if (admin.apps.length) {
     db = admin.firestore();
   }
@@ -45,64 +45,16 @@ try {
   );
 }
 
-// Parámetros y reglas oficiales de negocio
-const UMBRAL_ENVIO_GRATIS = 300000;
-const COSTO_FLETE_KM1_6 = 20000;
-const COSTO_FLETE_KM7_12 = 20000;
-const MINIMO_LADRILLOS_ENVIO_GRATIS = 150;
-
-function normalizarTexto(str) {
-  return (str || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
-}
-
-function esCementoOPlasticor(item) {
-  const nombreNorm = normalizarTexto(item?.nombre);
-  return nombreNorm.includes("cemento") || nombreNorm.includes("plasticor");
-}
-
-function esProductoCategoriaOtrosOCemento(item) {
-  const cat = (item?.categoria || "").toLowerCase().trim();
-  const nombreNorm = normalizarTexto(item?.nombre);
-  if (cat === "otros") return true;
-  if (esCementoOPlasticor(item)) return true;
-  if (
-    nombreNorm.includes("alambre") ||
-    nombreNorm.includes("alambron") ||
-    nombreNorm.includes("hierro") ||
-    nombreNorm.includes("varilla") ||
-    nombreNorm.includes("barra")
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function esLadrillo(item) {
-  const cat = (item?.categoria || "").toLowerCase().trim();
-  const nombreNorm = normalizarTexto(item?.nombre);
-  return cat === "ladrillos" || nombreNorm.includes("ladrillo") || nombreNorm.includes("peine");
-}
-
-function contarLadrillos(items) {
-  if (!items || !Array.isArray(items)) return 0;
-  return items.reduce((acc, item) => (esLadrillo(item) ? acc + Number(item.cantidad || 0) : acc), 0);
-}
-
-function tieneProductosConRestriccionLadrillos(items) {
-  if (!items || !Array.isArray(items) || items.length === 0) return false;
-  return items.some(item => esProductoCategoriaOtrosOCemento(item));
-}
-
-function requiereMinimoLadrillosEnvioGratis(items) {
-  if (!items || !Array.isArray(items) || items.length === 0) return false;
-  const tieneRestringidos = tieneProductosConRestriccionLadrillos(items);
-  const totalLadrillos = contarLadrillos(items);
-  return tieneRestringidos && totalLadrillos < MINIMO_LADRILLOS_ENVIO_GRATIS;
-}
+import {
+  UMBRAL_ENVIO_GRATIS,
+  MINIMO_LADRILLOS_ENVIO_GRATIS,
+  COSTO_ENVIO,
+  ZONAS_ELDORADO_VALIDAS,
+  esLadrillo,
+  contarLadrillos,
+  requiereMinimoLadrillosEnvioGratis,
+  calcularCostoEnvio
+} from "../../reglas-envio.js";
 
 function jsonResponse(status, body) {
   return new Response(JSON.stringify(body), {
@@ -153,6 +105,7 @@ export default async (req) => {
   const {
     items: itemsSolicitados,
     tipoDestino = "eldorado",
+    zonaEldorado = "km1_6",
     departamento = "Eldorado",
     localidad = "Eldorado",
     zonaEnvio = "Km 1 a 6",
@@ -167,7 +120,6 @@ export default async (req) => {
   if (!itemsSolicitados || !Array.isArray(itemsSolicitados) || itemsSolicitados.length === 0) {
     return jsonResponse(400, { success: false, code: "INVALID_ARGUMENT", error: "El pedido debe contener al menos un producto." });
   }
-
   if (itemsSolicitados.length > 100) {
     return jsonResponse(400, { success: false, code: "INVALID_ARGUMENT", error: "El pedido no puede superar 100 productos diferentes." });
   }
@@ -196,7 +148,6 @@ export default async (req) => {
       if (!id || !/^[a-zA-Z0-9_\-]+$/.test(id)) {
         return jsonResponse(400, { success: false, code: "INVALID_ARGUMENT", error: `Identificador de producto inválido: "${id}".` });
       }
-
       if (!Number.isInteger(cantidad) || cantidad <= 0 || cantidad > 50000) {
         return jsonResponse(400, { success: false, code: "INVALID_ARGUMENT", error: `Cantidad no válida para el producto ${id}.` });
       }
@@ -208,7 +159,6 @@ export default async (req) => {
 
       const prodData = prodDoc.data() || {};
       const precioOficial = Number(prodData.precio || 0);
-
       if (isNaN(precioOficial) || precioOficial < 0) {
         return jsonResponse(500, { success: false, code: "INTERNAL", error: `El precio oficial del producto ${prodData.nombre || id} es inválido.` });
       }
@@ -223,7 +173,9 @@ export default async (req) => {
         cantidad,
         subtotal: itemSubtotal,
         categoria: String(prodData.categoria || "otros"),
-        imagen: String(prodData.imagen || "")
+        imagen: String(prodData.imagen || ""),
+        descripcion: String(prodData.descripcion || "").slice(0, 500),
+        ladrilloEquivalente: Number(prodData.ladrilloEquivalente || 0)
       });
     }
   } catch (err) {
@@ -231,25 +183,14 @@ export default async (req) => {
     return jsonResponse(500, { success: false, code: "INTERNAL", error: "Error interno al validar el catálogo contra Firestore." });
   }
 
-  // 3. Calcular costo de flete oficial según reglas vigentes
-  let costoEnvioOficial = 0;
-  const esOtro = tipoDestino === "otro";
-
-  if (!esOtro) {
-    const restriccionLadrillosActiva = requiereMinimoLadrillosEnvioGratis(itemsCongelados);
-    const esKm7a12 = String(zonaEnvio || "").includes("7") || String(zonaEnvio || "").includes("km7_12");
-    const fleteBase = esKm7a12 ? COSTO_FLETE_KM7_12 : COSTO_FLETE_KM1_6;
-
-    if (restriccionLadrillosActiva) {
-      costoEnvioOficial = fleteBase;
-    } else if (subtotalOficial >= UMBRAL_ENVIO_GRATIS) {
-      costoEnvioOficial = 0;
-    } else {
-      costoEnvioOficial = fleteBase;
-    }
-  } else {
-    costoEnvioOficial = 0;
-  }
+  // 3. Calcular costo de flete oficial según reglas vigentes centralizadas en reglas-envio.js
+  const zonaValidada = ZONAS_ELDORADO_VALIDAS.includes(zonaEldorado) ? zonaEldorado : "km1_6";
+  const costoEnvioOficial = calcularCostoEnvio({
+    items: itemsCongelados,
+    subtotal: subtotalOficial,
+    tipoDestino,
+    zonaEldorado: zonaValidada
+  });
 
   const totalCalculadoOficial = subtotalOficial + costoEnvioOficial;
 
@@ -275,6 +216,7 @@ export default async (req) => {
     await db.runTransaction(async (transaction) => {
       const rateLimitSnap = await transaction.get(rateLimitRef);
       const contadorSnap = await transaction.get(contadorRef);
+
       const ahoraMs = Date.now();
       const DIEZ_MINUTOS_MS = 10 * 60 * 1000;
       let nuevoCount = 1;
@@ -284,6 +226,7 @@ export default async (req) => {
         const rlData = rateLimitSnap.data() || {};
         primerEnvioMs = Number(rlData.primerEnvio || ahoraMs);
         const cantidad = Number(rlData.cantidad || 0);
+
         if (ahoraMs - primerEnvioMs < DIEZ_MINUTOS_MS) {
           if (cantidad >= 3) {
             const err = new Error("RATE_LIMIT");
@@ -326,6 +269,7 @@ export default async (req) => {
       const refLimpia = String(referencia || "").trim().slice(0, 300);
       const locLimpia = String(localidad || "Eldorado").slice(0, 100);
       const deptoLimpio = String(departamento || (esOtro ? "Misiones" : "Eldorado")).slice(0, 100);
+
       const direccionCompleta = refLimpia
         ? `${direccionLimpia}, ${locLimpia} (${deptoLimpio}) — Ref: ${refLimpia}`
         : `${direccionLimpia}, ${locLimpia} (${deptoLimpio})`;
@@ -355,6 +299,7 @@ export default async (req) => {
       };
 
       if (esOtro) pedidoDocData.envioACoordinar = true;
+
       transaction.set(nuevoPedidoRef, pedidoDocData);
     });
   } catch (err) {

@@ -1103,6 +1103,11 @@ button:focus-visible {
   letter-spacing: 0.3px;
 }
 
+.badge-combos {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
 .badge-ladrillos {
   background-color: #fbeee7;
   color: #b84800;
@@ -1133,6 +1138,16 @@ button:focus-visible {
   align-items: center;
   gap: 6px;
   transition: all 0.15s ease;
+}
+
+.btn-duplicar-fila {
+  background-color: #e8f4fd;
+  color: #0b72b9;
+}
+
+.btn-duplicar-fila:hover {
+  background-color: #0b72b9;
+  color: #ffffff;
 }
 
 .btn-editar-fila {
@@ -1410,6 +1425,31 @@ button:focus-visible {
 .boton-cancelar:hover {
   background-color: #f7f5f2;
   color: var(--color-carbon);
+}
+
+.boton-guardar-otro {
+  padding: 10px 16px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-naranja);
+  background-color: #fff6ee;
+  border: 1px solid var(--color-naranja);
+  border-radius: var(--radio);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.boton-guardar-otro:hover {
+  background-color: var(--color-naranja);
+  color: #ffffff;
+}
+
+.boton-guardar-otro:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .boton-guardar {

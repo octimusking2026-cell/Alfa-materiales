@@ -17,7 +17,7 @@
         },
         "categoria": {
           "type": "string",
-          "enum": ["ladrillos", "aridos", "otros"],
+          "enum": ["combos", "ladrillos", "aridos", "otros"],
           "description": "Categoría del producto"
         },
         "imagen": {

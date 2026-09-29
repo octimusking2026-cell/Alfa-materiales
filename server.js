@@ -5,8 +5,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-import crearPedidoHandler from './netlify/functions/crear-pedido.js';
-
 const app = express();
 // Dev server in AI Studio must listen strictly on port 3000
 const PORT = 3000;
@@ -16,6 +14,7 @@ app.use(express.json());
 // Emulador local para Netlify Function en preview/desarrollo
 app.post('/.netlify/functions/crear-pedido', async (req, res) => {
   try {
+    const { default: crearPedidoHandler } = await import('./netlify/functions/crear-pedido.mjs');
     const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
     const webReq = new Request(url, {
       method: req.method,
@@ -43,6 +42,14 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.get('/healthz', (req, res) => {
+  res.status(200).send('OK');
+});
+
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Alfa Materiales server running on http://0.0.0.0:${PORT}`);
+});
+
+server.on('error', (err) => {
+  console.error('[SERVER ERROR]', err);
 });

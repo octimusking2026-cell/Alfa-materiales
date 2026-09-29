@@ -18,7 +18,9 @@ import {
   obtenerInfoDepartamento, 
   formatearPrecio, 
   formatearCodigoPedido, 
-  construirObjetoPedidoFirestore 
+  construirObjetoPedidoFirestore,
+  optimizarImagenUrl,
+  generarMensajeWhatsAppPedido
 } from './pedidos-utils.js';
 
 import { 
@@ -79,6 +81,12 @@ export function agregarAlCarrito(producto, cantidad = 1) {
     if (producto.categoria && !item.categoria) {
       item.categoria = producto.categoria;
     }
+    if (producto.ladrilloEquivalente !== undefined) {
+      item.ladrilloEquivalente = Number(producto.ladrilloEquivalente || 0);
+    }
+    if (producto.descripcion !== undefined) {
+      item.descripcion = String(producto.descripcion || "").slice(0, 500);
+    }
   } else {
     carrito.push({
       id: String(producto.id),
@@ -86,6 +94,8 @@ export function agregarAlCarrito(producto, cantidad = 1) {
       precio: Number(producto.precio),
       categoria: producto.categoria || "",
       imagen: producto.imagen,
+      descripcion: String(producto.descripcion || "").slice(0, 500),
+      ladrilloEquivalente: Number(producto.ladrilloEquivalente || 0),
       cantidad,
     });
   }
@@ -145,10 +155,11 @@ export function renderizarCarrito() {
     const div = document.createElement("div");
     div.classList.add("carrito-producto");
     div.innerHTML = `
-      <img src="${item.imagen}" alt="${escaparHtml(item.nombre)}" onerror="this.src='fotos/favicon-32.png'">
+      <img src="${optimizarImagenUrl(item.imagen)}" alt="${escaparHtml(item.nombre)}" onerror="this.src='fotos/favicon-32.png'">
       <div class="carrito-producto-titulo">
         <small>Producto</small>
         <h3>${escaparHtml(item.nombre)}</h3>
+        ${item.descripcion ? `<p class="carrito-item-descripcion" style="font-size: 0.8rem; color: #6e6e73; margin-top: 4px; white-space: pre-wrap; line-height: 1.3;">${escaparHtml(item.descripcion)}</p>` : ''}
       </div>
       <div class="carrito-producto-cantidad">
         <small>Cantidad</small>
@@ -350,6 +361,7 @@ export async function procesarCompraPublica() {
         cantidad: Number(item.cantidad || 1)
       })),
       tipoDestino: envioSeleccion.tipoDestino,
+      zonaEldorado: envioSeleccion.zonaEldorado || "km1_6",
       departamento: envioSeleccion.tipoDestino === "eldorado" ? "Eldorado" : (deptoActualInfo?.nombre || envioSeleccion.deptoOtro || "Misiones"),
       localidad: envioSeleccion.tipoDestino === "eldorado" ? (configEnvios.zonasEldorado[envioSeleccion.zonaEldorado]?.nombre || "Eldorado") : envioSeleccion.localidadOtro,
       zonaEnvio: envioSeleccion.tipoDestino === "eldorado" ? (configEnvios.zonasEldorado[envioSeleccion.zonaEldorado]?.nombre || "Km 1 a 6") : `${deptoActualInfo?.nombre || envioSeleccion.deptoOtro} — ${envioSeleccion.localidadOtro}`,
@@ -377,6 +389,8 @@ export async function procesarCompraPublica() {
     }
 
     const codigoPedido = datosRespuesta.codigoPedido || "PEDIDO CONFIRMADO";
+    const itemsConfirmados = [...carrito];
+    const calculoFinal = calculoEnvio;
 
     // 5. Limpiar el carrito y registrar marca de tiempo anti-spam tras confirmación exitosa
     localStorage.setItem("alfa_ultimo_pedido_ts", String(Date.now()));
@@ -387,8 +401,17 @@ export async function procesarCompraPublica() {
     if (inputBarrioCalle) inputBarrioCalle.value = "";
     if (inputDetallesRef) inputDetallesRef.value = "";
 
-    // 6. Preparar enlace de consulta a WhatsApp (canal de consulta, NO para registrar pedido)
-    const mensajeConsulta = `Hola Alfa Materiales! Acabo de registrar mi ${codigoPedido} a nombre de ${nombreCliente} con entrega en ${direccionCompleta}.`;
+    // 6. Preparar enlace de consulta a WhatsApp con detalle de productos y descripción
+    const mensajeConsulta = generarMensajeWhatsAppPedido({
+      codigoPedido: codigoPedido,
+      clienteNombre: nombreCliente,
+      clienteDireccion: direccionCompleta,
+      items: itemsConfirmados,
+      subtotal: calculoFinal?.subtotal || 0,
+      costoEnvio: calculoFinal?.costoEnvio || 0,
+      total: calculoFinal?.total || 0,
+      envioACoordinar: envioSeleccion.tipoDestino === "otro"
+    });
     const urlWhatsApp = `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(mensajeConsulta)}`;
 
     // 7. Mostrar pantalla de éxito al cliente

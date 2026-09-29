@@ -5,8 +5,9 @@
 
 import { db } from './firebase-init.js';
 import { collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
-import { formatearPrecio } from './pedidos-utils.js';
+import { formatearPrecio, optimizarImagenUrl } from './pedidos-utils.js';
 import { agregarAlCarrito } from './carrito.js';
+import { CATEGORIAS, MAPA_CATEGORIAS, ORDEN_CATEGORIAS } from './categorias.js';
 
 const WHATSAPP_NUMERO = "543751563056";
 
@@ -55,6 +56,30 @@ export function inicializarCatalogo() {
   const contenedor = document.querySelector(".contenedor-productos");
   if (!contenedor) return;
 
+  const listaMenuNav = document.getElementById("menu-categorias-lista");
+  if (listaMenuNav) {
+    const numeritoActual = document.querySelector(".numerito")?.textContent || "0";
+    listaMenuNav.innerHTML = `
+      <li>
+        <button class="boton-menu boton-categoria active" data-categoria="todos"><i class="bi bi-hand-index"></i>Todos los productos</button>
+      </li>
+      ${CATEGORIAS.map(cat => `
+        <li>
+          <button class="boton-menu boton-categoria" data-categoria="${cat.id}">${cat.nombre}</button>
+        </li>
+      `).join("")}
+      <li>
+        <a class="boton-menu boton-carrito" href="carrito.html"><i class="bi bi-cart"></i>Carrito<span class="numerito">${numeritoActual}</span></a>
+      </li>
+      <li>
+        <a class="boton-menu boton-contacto" href="contacto.html"><i class="bi bi-geo-alt"></i>Contacto</a>
+      </li>
+      <li>
+        <a class="boton-menu boton-admin" href="admin.html"><i class="bi bi-shield-lock"></i>Administración</a>
+      </li>
+    `;
+  }
+
   const botonesCategoria = document.querySelectorAll(".boton-categoria");
   const titulo = document.querySelector(".titulo");
   const inputBusqueda = document.querySelector(".buscador-input");
@@ -65,7 +90,12 @@ export function inicializarCatalogo() {
     contenedor.innerHTML = "";
 
     let lista = categoriaActual === "todos"
-      ? productos
+      ? [...productos].sort((a, b) => {
+          const ordA = ORDEN_CATEGORIAS[a.categoria] ?? 99;
+          const ordB = ORDEN_CATEGORIAS[b.categoria] ?? 99;
+          if (ordA !== ordB) return ordA - ordB;
+          return (a.nombre || "").localeCompare(b.nombre || "");
+        })
       : productos.filter(p => p.categoria === categoriaActual);
 
     const busqueda = inputBusqueda ? inputBusqueda.value.trim().toLowerCase() : "";
@@ -86,13 +116,38 @@ export function inicializarCatalogo() {
       return;
     }
 
+    function renderizarDescripcionProducto(desc) {
+      if (!desc || !desc.trim()) return "";
+      const textoLimpio = desc.trim();
+      const esLargo = textoLimpio.length > 110 || textoLimpio.split("\n").length > 3;
+
+      if (!esLargo) {
+        return `<div class="producto-descripcion" style="font-size: 0.82rem; color: #555; margin: 4px 0 8px 0; line-height: 1.4; white-space: pre-wrap; word-break: break-word;">${escaparHtml(textoLimpio)}</div>`;
+      }
+
+      const corto = textoLimpio.slice(0, 100) + "...";
+      return `
+        <div class="producto-descripcion-contenedor" style="margin: 4px 0 8px 0;">
+          <div class="producto-desc-corta" style="font-size: 0.82rem; color: #555; line-height: 1.4; white-space: pre-wrap; word-break: break-word;">
+            ${escaparHtml(corto)}
+            <button type="button" class="btn-toggle-desc" style="background: none; border: none; padding: 0 4px; color: var(--color-primario, #ff5722); font-size: 0.8rem; font-weight: 600; cursor: pointer; text-decoration: underline;">ver más</button>
+          </div>
+          <div class="producto-desc-completa" style="display: none; font-size: 0.82rem; color: #555; line-height: 1.4; white-space: pre-wrap; word-break: break-word;">
+            ${escaparHtml(textoLimpio)}
+            <button type="button" class="btn-toggle-desc" style="background: none; border: none; padding: 0 4px; color: var(--color-primario, #ff5722); font-size: 0.8rem; font-weight: 600; cursor: pointer; text-decoration: underline;">ver menos</button>
+          </div>
+        </div>
+      `;
+    }
+
     lista.forEach(producto => {
       const articulo = document.createElement("article");
       articulo.classList.add("producto");
       articulo.innerHTML = `
-        <img class="producto-imagen" src="${producto.imagen}" alt="${escaparHtml(producto.nombre)}" onerror="this.src='fotos/favicon-32.png'">
+        <img class="producto-imagen" src="${optimizarImagenUrl(producto.imagen)}" alt="${escaparHtml(producto.nombre)}" onerror="this.src='fotos/favicon-32.png'">
         <div class="producto-detalles">
           <h3 class="producto-nombre">${escaparHtml(producto.nombre)}</h3>
+          ${renderizarDescripcionProducto(producto.descripcion)}
           <p class="producto-precio">${formatearPrecio(producto.precio)}</p>
           <div class="producto-cantidad">
             <button type="button" class="cantidad-btn cantidad-restar" data-id="${producto.id}" aria-label="Restar cantidad">−</button>
@@ -116,14 +171,14 @@ export function inicializarCatalogo() {
       botonesCategoria.forEach(b => b.classList.remove("active"));
       boton.classList.add("active");
 
-      const texto = boton.textContent.trim().toLowerCase();
-      let categoria = "todos";
-      if (texto.includes("ladrillos")) categoria = "ladrillos";
-      else if (texto.includes("áridos") || texto.includes("aridos")) categoria = "aridos";
-      else if (texto.includes("otros")) categoria = "otros";
-
-      categoriaActual = categoria;
-      titulo.textContent = boton.textContent.trim();
+      const catId = boton.dataset.categoria || "todos";
+      categoriaActual = catId;
+      if (catId === "todos") {
+        titulo.textContent = "Todos los productos";
+      } else {
+        const catObj = MAPA_CATEGORIAS[catId];
+        titulo.textContent = catObj ? catObj.nombre : boton.textContent.trim();
+      }
       renderizarProductos();
     });
   });
@@ -135,6 +190,21 @@ export function inicializarCatalogo() {
 
   // Delegación de eventos para agregar y sumar/restar
   contenedor.addEventListener("click", (evento) => {
+    const botonToggleDesc = evento.target.closest(".btn-toggle-desc");
+    if (botonToggleDesc) {
+      const contenedorDesc = botonToggleDesc.closest(".producto-descripcion-contenedor");
+      if (contenedorDesc) {
+        const corta = contenedorDesc.querySelector(".producto-desc-corta");
+        const completa = contenedorDesc.querySelector(".producto-desc-completa");
+        if (corta && completa) {
+          const estaMostrandoCorta = corta.style.display !== "none";
+          corta.style.display = estaMostrandoCorta ? "none" : "block";
+          completa.style.display = estaMostrandoCorta ? "block" : "none";
+        }
+      }
+      return;
+    }
+
     const botonRestar = evento.target.closest(".cantidad-restar");
     const botonSumar = evento.target.closest(".cantidad-sumar");
     const botonAgregar = evento.target.closest(".producto-boton");

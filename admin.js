@@ -1,8 +1,15 @@
 // Alfa Materiales - Panel de Administración (Productos y Pedidos)
+
+// ==========================================================================
+// Configuración de Cloudinary (Subida directa unsigned)
+// ==========================================================================
+const CLOUDINARY_CLOUD_NAME = "kcsfxt0i";
+const CLOUDINARY_UPLOAD_PRESET = "productos_preset";
+const CLOUDINARY_FOLDER = "productos";
+
 import { 
   db, 
   auth, 
-  storage,
   ADMIN_EMAILS, 
   OperationType, 
   handleFirestoreError 
@@ -23,13 +30,6 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 
 import { 
-  ref, 
-  uploadBytesResumable, 
-  getDownloadURL,
-  deleteObject
-} from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js';
-
-import { 
   signInWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
@@ -47,8 +47,15 @@ import {
   formatearCodigoPedido, 
   formatearPrecio,
   obtenerInfoDepartamento,
-  ESTADOS_PEDIDO 
+  ESTADOS_PEDIDO,
+  optimizarImagenUrl
 } from './pedidos-utils.js';
+
+import { 
+  CATEGORIAS, 
+  MAPA_CATEGORIAS, 
+  ORDEN_CATEGORIAS 
+} from './categorias.js';
 
 // Catálogo predeterminado para sincronización / siembra inicial
 const CATALOGO_BASE = [
@@ -471,41 +478,7 @@ async function comprimirImagenCliente(file, maxAncho = 1000, maxAlto = 1000, cal
   });
 }
 
-// Eliminar archivo de Firebase Storage para evitar fotos huérfanas
-async function eliminarImagenDeStorage(urlOPath) {
-  if (!urlOPath || typeof urlOPath !== "string") return;
-
-  const esUrlStorage = urlOPath.includes("firebasestorage.googleapis.com") || 
-                       urlOPath.startsWith("gs://") || 
-                       urlOPath.startsWith("productos/");
-
-  if (!esUrlStorage) {
-    // Es una foto estática local (ej: 'fotos/8x18x25 L.jpg'), no se borra
-    return;
-  }
-
-  try {
-    let storageRef;
-    if (urlOPath.includes("/o/")) {
-      const encodedPath = urlOPath.split("/o/")[1].split("?")[0];
-      const decodedPath = decodeURIComponent(encodedPath);
-      storageRef = ref(storage, decodedPath);
-    } else {
-      storageRef = ref(storage, urlOPath);
-    }
-
-    await deleteObject(storageRef);
-    console.log("Foto eliminada de Firebase Storage:", urlOPath);
-  } catch (err) {
-    if (err.code === "storage/object-not-found") {
-      console.warn("La imagen ya no existía en Storage.");
-    } else {
-      console.warn("No se pudo eliminar la imagen de Storage:", err);
-    }
-  }
-}
-
-// Subir imagen a Firebase Storage en carpeta productos/ con compresión previa y reporte de progreso
+// Subir imagen a Cloudinary en folder 'productos' con compresión previa del lado del cliente
 async function subirImagenAStorage(file, onProgress, onStatusText) {
   if (!file) throw new Error("No se seleccionó ningún archivo.");
   if (!file.type.startsWith("image/")) {
@@ -516,57 +489,204 @@ async function subirImagenAStorage(file, onProgress, onStatusText) {
   }
 
   if (onStatusText) {
-    onStatusText("Comprimiendo y optimizando imagen...");
+    onStatusText("Comprimiendo y optimizando foto...");
   }
+  if (onProgress) onProgress(20);
 
-  // 1. Compresión del lado del cliente
+  // 1. Compresión del lado del cliente (mantenida intacta)
   const archivoOptimizado = await comprimirImagenCliente(file);
   const pesoKb = (archivoOptimizado.size / 1024).toFixed(0);
   const pesoOrigKb = (file.size / 1024).toFixed(0);
 
   if (onStatusText) {
-    onStatusText(`Subiendo a productos/ (${pesoKb} KB en vez de ${pesoOrigKb} KB)...`);
+    onStatusText(`Subiendo foto (${pesoKb} KB en vez de ${pesoOrigKb} KB)...`);
   }
+  if (onProgress) onProgress(45);
 
-  const safeName = archivoOptimizado.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const storagePath = `productos/${Date.now()}_${safeName}`;
-  const storageRef = ref(storage, storagePath);
-  const uploadTask = uploadBytesResumable(storageRef, archivoOptimizado);
+  // 2. Preparar FormData para Cloudinary unsigned upload
+  const formData = new FormData();
+  formData.append("file", archivoOptimizado);
+  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  formData.append("folder", CLOUDINARY_FOLDER);
 
-  return new Promise((resolve, reject) => {
-    uploadTask.on(
-      'state_changed',
-      (snapshot) => {
-        const progress = snapshot.totalBytes > 0 
-          ? (snapshot.bytesTransferred / snapshot.totalBytes) * 100 
-          : 0;
-        if (onProgress) onProgress(progress, pesoKb, pesoOrigKb);
-      },
-      (error) => {
-        console.error("Error al subir a Firebase Storage:", error);
-        let msg = `Error al subir imagen: ${error.message}`;
-        if (error.code === 'storage/unauthorized') {
-          msg = "No tenés permisos para subir archivos en Storage.";
-        } else if (error.code === 'storage/bucket-not-found' || error.message.includes('does not exist')) {
-          msg = "El almacenamiento de Firebase Storage aún no está activado en tu consola. Activá Firebase Storage en: https://console.firebase.google.com/project/alfa-materiales/storage";
-        }
-        reject(new Error(msg));
-      },
-      async () => {
-        try {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          resolve({ downloadURL, pesoKb, pesoOrigKb });
-        } catch (urlErr) {
-          reject(urlErr);
-        }
-      }
-    );
-  });
+  // 3. Timeout de 30 segundos con AbortController
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, 30000);
+
+  // Progreso visual mientras se completa la transferencia de red
+  let pctSimulado = 45;
+  const intervaloProgreso = setInterval(() => {
+    pctSimulado = Math.min(pctSimulado + 5, 92);
+    if (onProgress) onProgress(pctSimulado);
+  }, 350);
+
+  try {
+    const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+    const response = await fetch(uploadUrl, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal
+    });
+
+    clearInterval(intervaloProgreso);
+    clearTimeout(timeoutId);
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      console.error("[CLOUDINARY] Error en respuesta de carga:", data);
+      const errorDetalle = data?.error?.message || (data?.error ? JSON.stringify(data.error) : `Error HTTP ${response.status} en Cloudinary.`);
+      throw new Error(`Error de Cloudinary: ${errorDetalle}`);
+    }
+
+    const secureUrl = data.secure_url;
+    if (!secureUrl) {
+      throw new Error("Cloudinary no devolvió una URL válida para la imagen.");
+    }
+
+    if (onProgress) onProgress(100);
+
+    return { 
+      downloadURL: secureUrl, 
+      secure_url: secureUrl,
+      pesoKb, 
+      pesoOrigKb 
+    };
+  } catch (err) {
+    clearInterval(intervaloProgreso);
+    clearTimeout(timeoutId);
+
+    if (err.name === "AbortError") {
+      throw new Error("Tiempo de espera agotado (30 segundos) al subir la foto a Cloudinary. Por favor comprobá tu conexión y volvé a intentar.");
+    }
+    throw err;
+  }
+}
+
+// Actualizar contador de caracteres de la descripción
+function actualizarContadorDescripcion() {
+  const txtDesc = document.getElementById("prod-descripcion");
+  const contador = document.getElementById("prod-descripcion-contador");
+  if (!contador) return;
+  const len = txtDesc ? txtDesc.value.length : 0;
+  contador.textContent = `${len}/500`;
+  contador.style.color = len > 450 ? "#d97706" : "var(--color-gris)";
+}
+
+// Actualizar visibilidad de ladrilloEquivalente en el modal (solo si la categoría no es "ladrillos")
+function actualizarVisibilidadLadrilloEquivalente() {
+  const cat = document.getElementById("prod-categoria")?.value;
+  const grupo = document.getElementById("grupo-ladrillo-equivalente");
+  const inputEquiv = document.getElementById("prod-ladrillo-equivalente");
+  if (!grupo) return;
+  if (cat && cat !== "ladrillos") {
+    grupo.style.display = "block";
+  } else {
+    grupo.style.display = "none";
+    if (inputEquiv) inputEquiv.value = "0";
+  }
+}
+
+// Abrir modal con datos precargados para crear una variante rápidamente (sin id y con foto ya cargada)
+function abrirModalDuplicar(prod) {
+  if (!prod) return;
+  const modal = document.getElementById("modal-producto");
+  const inputHiddenImg = document.getElementById("prod-imagen");
+  const inputFile = document.getElementById("prod-file");
+  const imgPreview = document.getElementById("img-preview");
+  const wrapProgreso = document.getElementById("progreso-subida-wrap");
+  const btnGuardarModal = document.getElementById("btn-guardar-producto");
+  const btnGuardarYOtro = document.getElementById("btn-guardar-y-otro");
+
+  document.getElementById("modal-titulo").innerHTML = `<i class="bi bi-copy"></i> Duplicar Producto (Nueva variante)`;
+  document.getElementById("prod-id").value = ""; // Sin ID para que al guardar cree un nuevo doc
+  document.getElementById("prod-nombre").value = prod.nombre || "";
+  document.getElementById("prod-precio").value = prod.precio ?? "";
+  document.getElementById("prod-categoria").value = prod.categoria || "ladrillos";
+  
+  const inputDesc = document.getElementById("prod-descripcion");
+  if (inputDesc) {
+    inputDesc.value = prod.descripcion || "";
+  }
+  actualizarContadorDescripcion();
+
+  const inputEquiv = document.getElementById("prod-ladrillo-equivalente");
+  if (inputEquiv) {
+    inputEquiv.value = prod.categoria !== "ladrillos" ? (prod.ladrilloEquivalente ?? 0) : 0;
+  }
+  actualizarVisibilidadLadrilloEquivalente();
+
+  if (inputHiddenImg) inputHiddenImg.value = prod.imagen || "";
+  if (inputFile) inputFile.value = "";
+  if (wrapProgreso) wrapProgreso.style.display = "none";
+  if (imgPreview) imgPreview.src = prod.imagen ? optimizarImagenUrl(prod.imagen) : "fotos/favicon-32.png";
+
+  if (btnGuardarModal) {
+    btnGuardarModal.disabled = false;
+    btnGuardarModal.innerHTML = `<i class="bi bi-check-circle"></i> Guardar Producto`;
+  }
+  if (btnGuardarYOtro) {
+    btnGuardarYOtro.disabled = false;
+    btnGuardarYOtro.innerHTML = `<i class="bi bi-plus-circle"></i> Guardar y cargar otro`;
+  }
+  if (modal) modal.style.display = "flex";
+  setTimeout(() => {
+    const inputNom = document.getElementById("prod-nombre");
+    inputNom?.focus();
+    inputNom?.select();
+  }, 60);
+}
+
+// Abrir modal de nuevo producto desde cero
+function abrirModalNuevo() {
+  const modal = document.getElementById("modal-producto");
+  const formProducto = document.getElementById("form-producto");
+  const inputHiddenImg = document.getElementById("prod-imagen");
+  const inputFile = document.getElementById("prod-file");
+  const imgPreview = document.getElementById("img-preview");
+  const wrapProgreso = document.getElementById("progreso-subida-wrap");
+  const btnGuardarModal = document.getElementById("btn-guardar-producto");
+  const btnGuardarYOtro = document.getElementById("btn-guardar-y-otro");
+
+  document.getElementById("modal-titulo").innerHTML = `<i class="bi bi-plus-circle"></i> Nuevo Producto`;
+  if (formProducto) formProducto.reset();
+  document.getElementById("prod-id").value = "";
+  if (inputHiddenImg) inputHiddenImg.value = "";
+  if (inputFile) inputFile.value = "";
+  if (wrapProgreso) wrapProgreso.style.display = "none";
+  if (imgPreview) imgPreview.src = "fotos/favicon-32.png";
+
+  const inputDesc = document.getElementById("prod-descripcion");
+  if (inputDesc) {
+    inputDesc.value = "";
+  }
+  actualizarContadorDescripcion();
+
+  const inputEquiv = document.getElementById("prod-ladrillo-equivalente");
+  if (inputEquiv) inputEquiv.value = "0";
+  actualizarVisibilidadLadrilloEquivalente();
+
+  if (btnGuardarModal) {
+    btnGuardarModal.disabled = false;
+    btnGuardarModal.innerHTML = `<i class="bi bi-check-circle"></i> Guardar Producto`;
+  }
+  if (btnGuardarYOtro) {
+    btnGuardarYOtro.disabled = false;
+    btnGuardarYOtro.innerHTML = `<i class="bi bi-plus-circle"></i> Guardar y cargar otro`;
+  }
+  if (modal) modal.style.display = "flex";
+  setTimeout(() => {
+    document.getElementById("prod-nombre")?.focus();
+  }, 60);
 }
 
 function inicializarProductos() {
   const inputBuscar = document.getElementById("admin-buscar-producto");
   const selectCategoria = document.getElementById("admin-filtro-categoria");
+  const selectCategoriaModal = document.getElementById("prod-categoria");
+  const inputDescModal = document.getElementById("prod-descripcion");
   const btnNuevoModal = document.getElementById("btn-abrir-modal-nuevo");
   const btnSembrar = document.getElementById("btn-sembrar-catalogo");
   const modal = document.getElementById("modal-producto");
@@ -581,11 +701,29 @@ function inicializarProductos() {
   const pctProgreso = document.getElementById("progreso-subida-porcentaje");
   const txtProgreso = document.getElementById("progreso-subida-texto");
   const btnGuardarModal = document.getElementById("btn-guardar-producto");
+  const btnGuardarYOtro = document.getElementById("btn-guardar-y-otro");
+
+  // Inicializar selectores dinámicamente con la configuración centralizada de categorías
+  if (selectCategoriaModal) {
+    selectCategoriaModal.innerHTML = CATEGORIAS.map(cat => `
+      <option value="${cat.id}">${cat.nombre}</option>
+    `).join("");
+  }
+  if (selectCategoria) {
+    selectCategoria.innerHTML = `
+      <option value="todas">Todas las categorías</option>
+      ${CATEGORIAS.map(cat => `
+        <option value="${cat.id}">${cat.nombre}</option>
+      `).join("")}
+    `;
+  }
 
   inputBuscar?.addEventListener("input", renderizarTablaProductos);
   selectCategoria?.addEventListener("change", renderizarTablaProductos);
+  selectCategoriaModal?.addEventListener("change", actualizarVisibilidadLadrilloEquivalente);
+  inputDescModal?.addEventListener("input", actualizarContadorDescripcion);
 
-  // Subida de imagen a Firebase Storage en modal Nuevo Producto
+  // Subida de imagen a Cloudinary en modal Nuevo Producto
   inputFile?.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -600,6 +738,7 @@ function inicializarProductos() {
     txtProgreso.innerHTML = `<i class="bi bi-hourglass-split"></i> Optimizando imagen...`;
 
     btnGuardarModal.disabled = true;
+    if (btnGuardarYOtro) btnGuardarYOtro.disabled = true;
     btnGuardarModal.innerHTML = `<i class="bi bi-cloud-arrow-up spin"></i> Subiendo foto...`;
 
     try {
@@ -616,20 +755,25 @@ function inicializarProductos() {
       );
 
       inputHiddenImg.value = downloadURL;
-      imgPreview.src = downloadURL;
-      txtProgreso.innerHTML = `<i class="bi bi-check-circle-fill" style="color: #2b8a3e;"></i> ¡Optimizada (${pesoKb} KB) y subida a Storage!`;
+      imgPreview.src = optimizarImagenUrl(downloadURL);
+      txtProgreso.innerHTML = `<i class="bi bi-check-circle-fill" style="color: #2b8a3e;"></i> ¡Optimizada (${pesoKb} KB) y subida con éxito!`;
       mostrarToast(`Foto comprimida de ${pesoOrigKb}KB a ${pesoKb}KB y subida`);
     } catch (err) {
+      if (inputFile) inputFile.value = "";
       await mostrarAlertaModal({
         titulo: "Error al subir imagen",
         mensaje: err.message,
         icono: "bi-exclamation-triangle-fill",
         tipo: "error"
       });
-      txtProgreso.innerHTML = `<i class="bi bi-exclamation-triangle-fill" style="color: #b3261e;"></i> Error al subir`;
+      txtProgreso.innerHTML = `<i class="bi bi-exclamation-triangle-fill" style="color: #b3261e;"></i> Error al subir. Podés reintentar.`;
     } finally {
       btnGuardarModal.disabled = false;
       btnGuardarModal.innerHTML = `<i class="bi bi-check-circle"></i> Guardar Producto`;
+      if (btnGuardarYOtro) {
+        btnGuardarYOtro.disabled = false;
+        btnGuardarYOtro.innerHTML = `<i class="bi bi-plus-circle"></i> Guardar y cargar otro`;
+      }
     }
   });
 
@@ -639,16 +783,7 @@ function inicializarProductos() {
 
   // Abrir modal de nuevo producto
   btnNuevoModal?.addEventListener("click", () => {
-    document.getElementById("modal-titulo").innerHTML = `<i class="bi bi-plus-circle"></i> Nuevo Producto`;
-    formProducto.reset();
-    document.getElementById("prod-id").value = "";
-    inputHiddenImg.value = "";
-    if (inputFile) inputFile.value = "";
-    if (wrapProgreso) wrapProgreso.style.display = "none";
-    imgPreview.src = "fotos/favicon-32.png";
-    btnGuardarModal.disabled = false;
-    btnGuardarModal.innerHTML = `<i class="bi bi-check-circle"></i> Guardar Producto`;
-    modal.style.display = "flex";
+    abrirModalNuevo();
   });
 
   // Cerrar modal
@@ -659,33 +794,41 @@ function inicializarProductos() {
     if (e.target === modal) cerrarModal();
   });
 
-  // Guardar producto desde modal (crear o editar)
-  formProducto?.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  // Guardar producto desde modal (crear o editar, con opción de cargar otro)
+  async function guardarProductoModal({ cerrarAlFinal = true } = {}) {
     const id = document.getElementById("prod-id").value.trim();
     const nombre = document.getElementById("prod-nombre").value.trim();
     const precio = Number(document.getElementById("prod-precio").value);
     const categoria = document.getElementById("prod-categoria").value;
     const imagen = inputHiddenImg.value.trim();
+    const descripcion = document.getElementById("prod-descripcion")?.value.trim().slice(0, 500) || "";
+    const ladrilloEquivalente = (categoria !== "ladrillos")
+      ? Math.max(0, Number(document.getElementById("prod-ladrillo-equivalente")?.value || 0))
+      : 0;
 
     if (!nombre || isNaN(precio) || precio < 0 || !categoria || !imagen) {
       await mostrarAlertaModal({
         titulo: "Campos requeridos",
-        mensaje: "Por favor completá todos los campos requeridos y seleccioná una foto para subir a Storage.",
+        mensaje: "Por favor completá todos los campos requeridos y seleccioná una foto del producto.",
         icono: "bi-exclamation-circle-fill",
         tipo: "advertencia"
       });
+      if (!nombre) document.getElementById("prod-nombre")?.focus();
+      else if (isNaN(precio) || precio < 0) document.getElementById("prod-precio")?.focus();
       return;
+    }
+
+    btnGuardarModal.disabled = true;
+    if (btnGuardarYOtro) btnGuardarYOtro.disabled = true;
+
+    if (cerrarAlFinal) {
+      btnGuardarModal.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Guardando...`;
+    } else if (btnGuardarYOtro) {
+      btnGuardarYOtro.innerHTML = `<i class="bi bi-arrow-repeat spin"></i> Guardando...`;
     }
 
     try {
       if (id) {
-        // Eliminar foto anterior en Storage si fue reemplazada
-        const prodPrevio = productosLista.find(p => p.id === id);
-        if (prodPrevio?.imagen && prodPrevio.imagen !== imagen) {
-          await eliminarImagenDeStorage(prodPrevio.imagen);
-        }
-
         // Actualizar existente
         const refDoc = doc(db, "productos", id);
         await updateDoc(refDoc, {
@@ -693,6 +836,8 @@ function inicializarProductos() {
           precio,
           categoria,
           imagen,
+          descripcion,
+          ladrilloEquivalente,
           updatedAt: serverTimestamp()
         });
         mostrarToast(`Producto "${nombre}" actualizado correctamente.`);
@@ -703,15 +848,67 @@ function inicializarProductos() {
           precio,
           categoria,
           imagen,
+          descripcion,
+          ladrilloEquivalente,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
         mostrarToast(`Producto "${nombre}" creado con éxito.`);
       }
-      cerrarModal();
+
+      if (cerrarAlFinal) {
+        cerrarModal();
+      } else {
+        // "Guardar y cargar otro": guarda, limpia el formulario (nombre, precio, foto y descripción),
+        // mantiene la categoría elegida y deja el modal abierto con el foco en el campo Nombre.
+        const catElegida = categoria;
+
+        document.getElementById("prod-id").value = "";
+        document.getElementById("prod-nombre").value = "";
+        document.getElementById("prod-precio").value = "";
+        if (document.getElementById("prod-descripcion")) {
+          document.getElementById("prod-descripcion").value = "";
+        }
+        actualizarContadorDescripcion();
+
+        inputHiddenImg.value = "";
+        if (inputFile) inputFile.value = "";
+        if (wrapProgreso) wrapProgreso.style.display = "none";
+        imgPreview.src = "fotos/favicon-32.png";
+
+        // Mantiene la categoría seleccionada y actualiza campo ladrilloEquivalente
+        document.getElementById("prod-categoria").value = catElegida;
+        const inputEquiv = document.getElementById("prod-ladrillo-equivalente");
+        if (inputEquiv) inputEquiv.value = "0";
+        actualizarVisibilidadLadrilloEquivalente();
+
+        document.getElementById("modal-titulo").innerHTML = `<i class="bi bi-plus-circle"></i> Nuevo Producto`;
+
+        setTimeout(() => {
+          document.getElementById("prod-nombre")?.focus();
+        }, 50);
+      }
     } catch (err) {
       handleFirestoreError(err, id ? OperationType.UPDATE : OperationType.CREATE, `productos/${id || ''}`);
+    } finally {
+      btnGuardarModal.disabled = false;
+      btnGuardarModal.innerHTML = `<i class="bi bi-check-circle"></i> Guardar Producto`;
+      if (btnGuardarYOtro) {
+        btnGuardarYOtro.disabled = false;
+        btnGuardarYOtro.innerHTML = `<i class="bi bi-plus-circle"></i> Guardar y cargar otro`;
+      }
     }
+  }
+
+  // Guardar con botón principal (cierra modal)
+  formProducto?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await guardarProductoModal({ cerrarAlFinal: true });
+  });
+
+  // Guardar y cargar otro (mantiene modal abierto y foco en Nombre)
+  btnGuardarYOtro?.addEventListener("click", async () => {
+    await guardarProductoModal({ cerrarAlFinal: false });
   });
 
   // Sembrar / sincronizar catálogo inicial de forma idempotente y robusta
@@ -867,6 +1064,13 @@ function renderizarTablaProductos() {
     return coincideNombre && coincideCat;
   });
 
+  filtrados.sort((a, b) => {
+    const ordA = ORDEN_CATEGORIAS[a.categoria] ?? 99;
+    const ordB = ORDEN_CATEGORIAS[b.categoria] ?? 99;
+    if (ordA !== ordB) return ordA - ordB;
+    return (a.nombre || "").localeCompare(b.nombre || "");
+  });
+
   if (totalCountEl) totalCountEl.textContent = filtrados.length;
 
   if (filtrados.length === 0) {
@@ -890,11 +1094,11 @@ function renderizarTablaProductos() {
     tr.className = esModoEdicionInline ? "fila-edicion-activa" : "";
 
     if (esModoEdicionInline) {
-      // FILA EN MODO EDICIÓN INLINE CON SUBIDA A FIREBASE STORAGE
+      // FILA EN MODO EDICIÓN INLINE CON SUBIDA DE FOTO DE PRODUCTO
       tr.innerHTML = `
         <td>
           <div class="subida-inline-contenedor">
-            <img src="${prod.imagen}" id="inline-img-preview-${prod.id}" class="tabla-thumb" alt="${escapar(prod.nombre)}" onerror="this.src='fotos/favicon-32.png'">
+            <img src="${optimizarImagenUrl(prod.imagen)}" id="inline-img-preview-${prod.id}" class="tabla-thumb" alt="${escapar(prod.nombre)}" onerror="this.src='fotos/favicon-32.png'">
             <label class="btn-subir-inline" for="inline-file-${prod.id}">
               <i class="bi bi-cloud-arrow-up"></i> Elegir foto
             </label>
@@ -908,13 +1112,14 @@ function renderizarTablaProductos() {
           </div>
         </td>
         <td>
-          <input type="text" class="input-inline" id="inline-nombre-${prod.id}" value="${escapar(prod.nombre)}" style="width: 100%; font-weight: 600;" required>
+          <input type="text" class="input-inline" id="inline-nombre-${prod.id}" value="${escapar(prod.nombre)}" style="width: 100%; font-weight: 600; margin-bottom: 6px;" required placeholder="Nombre del producto">
+          <textarea class="input-inline" id="inline-descripcion-${prod.id}" rows="2" maxlength="500" placeholder="Descripción / Qué incluye (opcional)" style="width: 100%; font-size: 0.85rem; resize: vertical;">${escapar(prod.descripcion || "")}</textarea>
         </td>
         <td>
           <select class="input-inline" id="inline-categoria-${prod.id}" style="width: 100%;">
-            <option value="ladrillos" ${prod.categoria === 'ladrillos' ? 'selected' : ''}>Ladrillos</option>
-            <option value="aridos" ${prod.categoria === 'aridos' ? 'selected' : ''}>Áridos y Aglomerantes</option>
-            <option value="otros" ${prod.categoria === 'otros' ? 'selected' : ''}>Otros</option>
+            ${CATEGORIAS.map(cat => `
+              <option value="${cat.id}" ${prod.categoria === cat.id ? 'selected' : ''}>${cat.nombre}</option>
+            `).join('')}
           </select>
         </td>
         <td>
@@ -936,27 +1141,29 @@ function renderizarTablaProductos() {
       `;
     } else {
       // FILA EN MODO LECTURA CON BOTONES DE EDITAR Y ELIMINAR
-      const badgeCategoria = {
-        ladrillos: { label: "Ladrillos", clase: "badge-ladrillos" },
-        aridos: { label: "Áridos", clase: "badge-aridos" },
-        otros: { label: "Otros", clase: "badge-otros" }
-      }[prod.categoria] || { label: prod.categoria, clase: "badge-otros" };
+      const infoCat = MAPA_CATEGORIAS[prod.categoria] || { nombre: prod.categoria, nombreCorto: prod.categoria, badgeClase: "badge-otros" };
+      const badgeClase = infoCat.badgeClase || "badge-otros";
+      const badgeLabel = infoCat.nombreCorto || infoCat.nombre || prod.categoria;
 
       tr.innerHTML = `
         <td>
-          <img src="${prod.imagen}" class="tabla-thumb" alt="${escapar(prod.nombre)}" onerror="this.src='fotos/favicon-32.png'">
+          <img src="${optimizarImagenUrl(prod.imagen)}" class="tabla-thumb" alt="${escapar(prod.nombre)}" onerror="this.src='fotos/favicon-32.png'">
         </td>
         <td>
           <strong class="prod-nombre-tabla">${escapar(prod.nombre)}</strong>
+          ${prod.descripcion ? `<div class="prod-desc-tabla" style="font-size: 0.8rem; color: var(--color-gris); margin-top: 4px; max-width: 320px; white-space: pre-wrap; line-height: 1.3;">${escapar(prod.descripcion)}</div>` : ''}
         </td>
         <td>
-          <span class="badge-cat ${badgeCategoria.clase}">${badgeCategoria.label}</span>
+          <span class="badge-cat ${badgeClase}">${badgeLabel}</span>
         </td>
         <td>
           <span class="prod-precio-tabla">${formatearPrecio(prod.precio)}</span>
         </td>
         <td style="text-align: right;">
           <div class="botones-fila-acciones">
+            <button class="btn-accion-tabla btn-duplicar-fila" data-id="${prod.id}" title="Duplicar producto para crear variante">
+              <i class="bi bi-copy"></i> Duplicar
+            </button>
             <button class="btn-accion-tabla btn-editar-fila" data-id="${prod.id}" title="Editar producto">
               <i class="bi bi-pencil-square"></i> Editar
             </button>
@@ -979,7 +1186,7 @@ function asignarEventosTabla() {
   const tbody = document.getElementById("cuerpo-tabla-productos");
   if (!tbody) return;
 
-  // Subida de imagen a Firebase Storage en edición inline
+  // Subida de foto del producto en edición inline
   tbody.querySelectorAll(".input-archivo-oculto").forEach(fileInput => {
     fileInput.addEventListener("change", async (e) => {
       const file = e.target.files?.[0];
@@ -1017,10 +1224,11 @@ function asignarEventosTabla() {
         );
 
         if (inputHidden) inputHidden.value = downloadURL;
-        imgPrev.src = downloadURL;
+        imgPrev.src = optimizarImagenUrl(downloadURL);
         if (progTxt) progTxt.textContent = `✓ ${pesoKb}KB`;
         mostrarToast(`Foto comprimida de ${pesoOrigKb}KB a ${pesoKb}KB y subida`);
       } catch (err) {
+        fileInput.value = "";
         await mostrarAlertaModal({
           titulo: "Error al subir imagen",
           mensaje: err.message,
@@ -1033,6 +1241,17 @@ function asignarEventosTabla() {
           btnGuardar.disabled = false;
           btnGuardar.innerHTML = `<i class="bi bi-check-lg"></i> Guardar`;
         }
+      }
+    });
+  });
+
+  // Click en Duplicar (abre el modal con datos precargados, sin id y con foto lista)
+  tbody.querySelectorAll(".btn-duplicar-fila").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.id;
+      const prod = productosLista.find(p => p.id === id);
+      if (prod) {
+        abrirModalDuplicar(prod);
       }
     });
   });
@@ -1061,11 +1280,13 @@ function asignarEventosTabla() {
       const inputPrecio = document.getElementById(`inline-precio-${id}`);
       const selectCat = document.getElementById(`inline-categoria-${id}`);
       const inputImg = document.getElementById(`inline-imagen-${id}`);
+      const inputDesc = document.getElementById(`inline-descripcion-${id}`);
 
       const nuevoNombre = inputNombre?.value.trim();
       const nuevoPrecio = Number(inputPrecio?.value);
       const nuevaCat = selectCat?.value;
       const nuevaImg = inputImg?.value.trim();
+      const nuevaDesc = inputDesc ? inputDesc.value.trim().slice(0, 500) : "";
 
       if (!nuevoNombre || isNaN(nuevoPrecio) || nuevoPrecio < 0 || !nuevaCat || !nuevaImg) {
         await mostrarAlertaModal({
@@ -1081,17 +1302,15 @@ function asignarEventosTabla() {
       btn.innerHTML = `<i class="bi bi-arrow-repeat spin"></i>`;
 
       try {
-        // Eliminar foto anterior en Storage si fue reemplazada
-        const prodPrevio = productosLista.find(p => p.id === id);
-        if (prodPrevio?.imagen && prodPrevio.imagen !== nuevaImg) {
-          await eliminarImagenDeStorage(prodPrevio.imagen);
-        }
-
+        const prodPrev = productosLista.find(p => p.id === id);
+        const equivPrev = nuevaCat !== "ladrillos" ? Number(prodPrev?.ladrilloEquivalente || 0) : 0;
         await updateDoc(doc(db, "productos", id), {
           nombre: nuevoNombre,
           precio: nuevoPrecio,
           categoria: nuevaCat,
           imagen: nuevaImg,
+          descripcion: nuevaDesc,
+          ladrilloEquivalente: equivPrev,
           updatedAt: serverTimestamp()
         });
 
@@ -1103,7 +1322,7 @@ function asignarEventosTabla() {
     });
   });
 
-  // Click en Eliminar (elimina el archivo de Storage y el doc de Firestore)
+  // Click en Eliminar (elimina el doc de Firestore sin necesidad de borrar fotos viejas)
   tbody.querySelectorAll(".btn-eliminar-fila").forEach(btn => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
@@ -1122,14 +1341,8 @@ function asignarEventosTabla() {
       if (confirmado) {
         btn.disabled = true;
         try {
-          // 1. Eliminar archivo en Firebase Storage si existe (evita fotos huérfanas)
-          if (prod?.imagen) {
-            await eliminarImagenDeStorage(prod.imagen);
-          }
-
-          // 2. Eliminar documento en Firestore
           await deleteDoc(doc(db, "productos", id));
-          mostrarToast(`Producto y archivo eliminados.`);
+          mostrarToast(`Producto eliminado correctamente.`);
         } catch (err) {
           handleFirestoreError(err, OperationType.DELETE, `productos/${id}`);
         }

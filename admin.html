@@ -126,6 +126,7 @@
                             <label><i class="bi bi-funnel"></i> Categoría:</label>
                             <select id="admin-filtro-categoria">
                                 <option value="todas">Todas las categorías</option>
+                                <option value="combos">Combos</option>
                                 <option value="ladrillos">Ladrillos</option>
                                 <option value="aridos">Áridos y Aglomerantes</option>
                                 <option value="otros">Otros</option>
@@ -145,7 +146,7 @@
                                     <th>Nombre del Producto</th>
                                     <th style="width: 170px;">Categoría</th>
                                     <th style="width: 150px;">Precio (ARS)</th>
-                                    <th style="width: 160px; text-align: right;">Acciones</th>
+                                    <th style="width: 240px; text-align: right;">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="cuerpo-tabla-productos">
@@ -228,6 +229,7 @@
                     <div class="form-grupo">
                         <label for="prod-categoria">Categoría <span class="requerido">*</span></label>
                         <select id="prod-categoria" required>
+                            <option value="combos">Combos</option>
                             <option value="ladrillos">Ladrillos</option>
                             <option value="aridos">Áridos y Aglomerantes</option>
                             <option value="otros">Otros</option>
@@ -235,17 +237,34 @@
                     </div>
                 </div>
 
+                <!-- Campo condicional: Ladrillo equivalente (solo para categorías distintas de "ladrillos") -->
+                <div class="form-grupo" id="grupo-ladrillo-equivalente" style="display: none;">
+                    <label for="prod-ladrillo-equivalente">Ladrillos equivalentes por unidad <span style="font-weight: normal; color: var(--color-gris);">(opcional, default 0)</span></label>
+                    <input type="number" id="prod-ladrillo-equivalente" min="0" step="1" value="0" placeholder="0">
+                    <small style="color: var(--color-gris); font-size: 0.8rem; display: block; margin-top: 4px;">
+                        Cantidad de ladrillos que suma cada unidad para el requisito de 150 ladrillos para envío gratis.
+                    </small>
+                </div>
+
                 <div class="form-grupo">
-                    <label for="prod-file">Foto del Producto (Subir a Firebase Storage) <span class="requerido">*</span></label>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                        <label for="prod-descripcion" style="margin-bottom: 0;">Descripción (qué incluye) <span style="font-weight: normal; color: var(--color-gris);">(opcional)</span></label>
+                        <small id="prod-descripcion-contador" style="color: var(--color-gris); font-size: 0.8rem; font-weight: 500;">0/500</small>
+                    </div>
+                    <textarea id="prod-descripcion" rows="3" maxlength="500" placeholder="Ej: Medidas estándar 12×18×25 cm. Ideal para paredes y cerramientos. Incluye faja de protección." style="width: 100%; border: 1.5px solid #d2d2d7; border-radius: 8px; padding: 10px 12px; font-family: inherit; font-size: 0.95rem; line-height: 1.4; resize: vertical;"></textarea>
+                </div>
+
+                <div class="form-grupo">
+                    <label for="prod-file">Foto del producto <span class="requerido">*</span></label>
                     <div class="subida-archivo-wrap">
                         <input type="file" id="prod-file" accept="image/*" class="input-archivo-estilizado">
                         <input type="hidden" id="prod-imagen" required>
                     </div>
 
-                    <!-- Progreso de subida a Storage en carpeta productos/ -->
+                    <!-- Progreso de subida de foto del producto -->
                     <div id="progreso-subida-wrap" class="barra-progreso-contenedor" style="display: none;">
                         <div class="progreso-info">
-                            <span id="progreso-subida-texto"><i class="bi bi-cloud-arrow-up"></i> Subiendo a productos/...</span>
+                            <span id="progreso-subida-texto"><i class="bi bi-cloud-arrow-up"></i> Subiendo foto...</span>
                             <span id="progreso-subida-porcentaje">0%</span>
                         </div>
                         <div class="barra-progreso-fondo">
@@ -264,6 +283,9 @@
 
                 <div class="modal-pie">
                     <button type="button" class="boton-cancelar" id="btn-cancelar-modal">Cancelar</button>
+                    <button type="button" class="boton-guardar-otro" id="btn-guardar-y-otro">
+                        <i class="bi bi-plus-circle"></i> Guardar y cargar otro
+                    </button>
                     <button type="submit" class="boton-guardar" id="btn-guardar-producto">
                         <i class="bi bi-check-circle"></i> Guardar Producto
                     </button>

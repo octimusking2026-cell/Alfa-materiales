@@ -29,11 +29,13 @@ service cloud.firestore {
     // Validación de Producto
     function isValidProduct(data) {
       return data.keys().hasAll(['nombre', 'precio', 'categoria', 'imagen']) &&
-        data.keys().hasOnly(['nombre', 'precio', 'categoria', 'imagen', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['nombre', 'precio', 'categoria', 'imagen', 'descripcion', 'ladrilloEquivalente', 'createdAt', 'updatedAt']) &&
         data.nombre is string && data.nombre.size() > 0 && data.nombre.size() <= 150 &&
         data.precio is number && data.precio >= 0 &&
-        data.categoria is string && data.categoria in ['ladrillos', 'aridos', 'otros'] &&
+        data.categoria is string && data.categoria in ['combos', 'ladrillos', 'aridos', 'otros'] &&
         data.imagen is string && data.imagen.size() > 0 && data.imagen.size() <= 1000 &&
+        (!('descripcion' in data) || (data.descripcion is string && data.descripcion.size() <= 500)) &&
+        (!('ladrilloEquivalente' in data) || (data.ladrilloEquivalente is number && data.ladrilloEquivalente >= 0)) &&
         (!('createdAt' in data) || data.createdAt is timestamp) &&
         (!('updatedAt' in data) || data.updatedAt is timestamp);
     }

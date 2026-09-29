@@ -4,10 +4,42 @@
    Evita discrepancias entre el carrito público, Firestore y el panel admin.
    ========================================================================== */
 
-// Parámetros de negocio oficiales
-export const UMBRAL_ENVIO_GRATIS = 300000; // A partir de $300.000
-export const UMBRAL_AVISO_CERCA = 280000;  // Aviso "Estás cerca" a partir de $280.000
-export const COSTO_ENVIO = 20000;          // Costo de flete dentro de la ciudad en ARS
+import {
+  UMBRAL_ENVIO_GRATIS,
+  UMBRAL_AVISO_CERCA,
+  COSTO_ENVIO,
+  COSTO_FLETE_KM1_6,
+  COSTO_FLETE_KM7_12,
+  MINIMO_LADRILLOS_ENVIO_GRATIS,
+  ZONAS_ELDORADO_VALIDAS,
+  COSTOS_FLETE_ELDORADO,
+  esLadrillo,
+  contarLadrillos,
+  contarLadrillosCarrito,
+  tieneProductosConRestriccionLadrillos,
+  requiereMinimoLadrillosEnvioGratis,
+  contieneSoloOtrosOCementoSinMinimoLadrillos,
+  calcularCostoEnvio
+} from './reglas-envio.js';
+
+// Re-exportar todas las reglas y constantes para compatibilidad
+export {
+  UMBRAL_ENVIO_GRATIS,
+  UMBRAL_AVISO_CERCA,
+  COSTO_ENVIO,
+  COSTO_FLETE_KM1_6,
+  COSTO_FLETE_KM7_12,
+  MINIMO_LADRILLOS_ENVIO_GRATIS,
+  ZONAS_ELDORADO_VALIDAS,
+  COSTOS_FLETE_ELDORADO,
+  esLadrillo,
+  contarLadrillos,
+  contarLadrillosCarrito,
+  tieneProductosConRestriccionLadrillos,
+  requiereMinimoLadrillosEnvioGratis,
+  contieneSoloOtrosOCementoSinMinimoLadrillos,
+  calcularCostoEnvio
+};
 
 // Estados del pedido con labels amigables y estilos visuales (3 principales: Pendiente, Entregado, Cancelado)
 export const ESTADOS_PEDIDO = {
@@ -41,6 +73,18 @@ export function formatearCodigoPedido(num) {
 }
 
 /**
+ * Optimiza URLs de imágenes de Cloudinary insertando transformaciones automáticas (f_auto,q_auto,w_600)
+ */
+export function optimizarImagenUrl(url) {
+  if (!url || typeof url !== "string") return url || "fotos/favicon-32.png";
+  if (url.includes("res.cloudinary.com") && url.includes("/upload/")) {
+    if (url.includes("/upload/f_auto,q_auto,w_600/")) return url;
+    return url.replace("/upload/", "/upload/f_auto,q_auto,w_600/");
+  }
+  return url;
+}
+
+/**
  * Normaliza cadenas de texto eliminando tildes y diacríticos
  */
 function normalizarTexto(str) {
@@ -49,86 +93,6 @@ function normalizarTexto(str) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
-}
-
-export const MINIMO_LADRILLOS_ENVIO_GRATIS = 150;
-
-/**
- * Determina si un producto individual corresponde a Cemento o Plasticor
- */
-export function esCementoOPlasticor(item) {
-  const nombreNorm = normalizarTexto(item?.nombre);
-  return nombreNorm.includes("cemento") || nombreNorm.includes("plasticor");
-}
-
-/**
- * Determina si un producto individual pertenece a la categoría 'otros' o es Cemento/Plasticor
- */
-export function esProductoCategoriaOtrosOCemento(item) {
-  const cat = (item?.categoria || "").toLowerCase().trim();
-  const nombreNorm = normalizarTexto(item?.nombre);
-  if (cat === "otros") return true;
-  if (esCementoOPlasticor(item)) return true;
-  if (
-    nombreNorm.includes("alambre") ||
-    nombreNorm.includes("alambron") ||
-    nombreNorm.includes("hierro") ||
-    nombreNorm.includes("varilla") ||
-    nombreNorm.includes("barra")
-  ) {
-    return true;
-  }
-  return false;
-}
-
-/**
- * Determina si un producto individual es un ladrillo
- */
-export function esLadrillo(item) {
-  const cat = (item?.categoria || "").toLowerCase().trim();
-  const nombreNorm = normalizarTexto(item?.nombre);
-  return cat === "ladrillos" || nombreNorm.includes("ladrillo") || nombreNorm.includes("peine");
-}
-
-/**
- * Cuenta la cantidad total de unidades de productos tipo Ladrillo en el carrito
- */
-export function contarLadrillosCarrito(carrito) {
-  if (!carrito || !Array.isArray(carrito)) return 0;
-  return carrito.reduce((acc, item) => {
-    return esLadrillo(item) ? acc + Number(item.cantidad || 0) : acc;
-  }, 0);
-}
-
-/**
- * Devuelve true si el carrito contiene AL MENOS UN producto de Cemento, Plasticor o categoría 'Otros'
- */
-export function tieneProductosConRestriccionLadrillos(carrito) {
-  if (!carrito || !Array.isArray(carrito) || carrito.length === 0) return false;
-  return carrito.some(item => esProductoCategoriaOtrosOCemento(item));
-}
-
-/**
- * Regla de negocio de envío gratis:
- * Si el pedido contiene Cemento, Plasticor o cualquier producto de la categoría 'Otros',
- * es condición OBLIGATORIA tener un mínimo de 150 ladrillos para acceder a envío gratis.
- * Si no hay al menos 150 ladrillos entremedio, NO IMPORTA el monto del carrito, el flete se cobra siempre.
- */
-export function requiereMinimoLadrillosEnvioGratis(carrito) {
-  if (!carrito || !Array.isArray(carrito) || carrito.length === 0) return false;
-  const tieneRestringidos = tieneProductosConRestriccionLadrillos(carrito);
-  const totalLadrillos = contarLadrillosCarrito(carrito);
-  return tieneRestringidos && totalLadrillos < MINIMO_LADRILLOS_ENVIO_GRATIS;
-}
-
-// Alias de retrocompatibilidad
-export function contieneSoloOtrosOCementoSinMinimoLadrillos(carrito) {
-  return requiereMinimoLadrillosEnvioGratis(carrito);
-}
-
-export function contieneSoloCementoOPlasticor(carrito) {
-  if (!carrito || !Array.isArray(carrito) || carrito.length === 0) return false;
-  return carrito.every(item => esCementoOPlasticor(item));
 }
 
 
@@ -331,7 +295,6 @@ export function validarYCalcularEnvio({
   }, 0);
 
   const totalLadrillos = contarLadrillosCarrito(items);
-  const soloCementoPlasticor = contieneSoloCementoOPlasticor(items);
 
   let valido = true;
   let error = null;
@@ -354,8 +317,8 @@ export function validarYCalcularEnvio({
     const faltanteParaEnvioGratis = UMBRAL_ENVIO_GRATIS - subtotal;
     const cercaDeEnvioGratis = faltanteParaEnvioGratis > 0 && faltanteParaEnvioGratis <= 20000;
 
-    // Regla: si el carrito tiene cemento, plasticor o cualquier producto de 'otros',
-    // NO IMPORTA EL MONTO DEL CARRITO, si no hay al menos 150 ladrillos se cobra el envío.
+    // Regla: si el carrito contiene productos que no son ladrillos,
+    // requiere al menos 150 ladrillos para acceder a envío gratis, sin importar el monto.
     if (restriccionLadrillosActiva) {
       costoEnvio = fleteBase;
       esGratis = false;
@@ -363,7 +326,7 @@ export function validarYCalcularEnvio({
 
       if (subtotal >= UMBRAL_ENVIO_GRATIS) {
         aviso = {
-          texto: `Flete en Eldorado (${nombreZona}): ${formatearPrecio(fleteBase)}. Los pedidos con Cemento, Plasticor o categoría 'Otros' requieren incluir al menos 150 ladrillos para acceder a envío gratis (faltan ${ladrillosFaltantes} ladrillos).`,
+          texto: `Flete en Eldorado (${nombreZona}): ${formatearPrecio(fleteBase)}. Los pedidos con productos que no son ladrillos requieren incluir al menos 150 ladrillos para acceder a envío gratis (faltan ${ladrillosFaltantes} ladrillos).`,
           clase: "pago"
         };
       } else if (cercaDeEnvioGratis) {
@@ -544,4 +507,53 @@ export function construirObjetoPedidoFirestore({
   }
 
   return pedidoData;
+}
+
+/**
+ * Genera el mensaje formateado para enviar por WhatsApp con el detalle del pedido.
+ * Si el producto tiene descripción, se incluye debajo de cada uno.
+ */
+export function generarMensajeWhatsAppPedido({
+  codigoPedido = "PEDIDO",
+  clienteNombre = "",
+  clienteDireccion = "",
+  items = [],
+  subtotal = 0,
+  costoEnvio = 0,
+  total = 0,
+  envioACoordinar = false
+} = {}) {
+  const lineas = [
+    `¡Hola Alfa Materiales! Acabo de registrar mi *${codigoPedido}*.`,
+    clienteNombre ? `*Cliente:* ${clienteNombre}` : "",
+    clienteDireccion ? `*Entrega:* ${clienteDireccion}` : "",
+    "",
+    "*Detalle de productos:*",
+  ].filter(linea => linea !== "");
+
+  items.forEach(item => {
+    const cant = item.cantidad || 1;
+    const precio = formatearPrecio(item.precio || 0);
+    const sub = formatearPrecio((item.precio || 0) * cant);
+    lineas.push(`• *${cant}x* ${item.nombre} (${precio} c/u) = ${sub}`);
+    if (item.descripcion && String(item.descripcion).trim()) {
+      const descLineas = String(item.descripcion).trim().split("\n");
+      descLineas.forEach(dl => {
+        if (dl.trim()) lineas.push(`   _${dl.trim()}_`);
+      });
+    }
+  });
+
+  lineas.push("");
+  lineas.push(`*Subtotal:* ${formatearPrecio(subtotal)}`);
+  if (envioACoordinar) {
+    lineas.push(`*Flete:* A coordinar`);
+  } else if (costoEnvio === 0) {
+    lineas.push(`*Flete:* ¡Incluido en Eldorado! (Gratis)`);
+  } else {
+    lineas.push(`*Flete:* ${formatearPrecio(costoEnvio)}`);
+  }
+  lineas.push(`*Total:* ${formatearPrecio(total)}`);
+
+  return lineas.join("\n");
 }

@@ -1,0 +1,109 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.get('admin', false) == true ||
+        (request.auth.token.email != null && request.auth.token.email in ['octimusking2026@gmail.com', 'jhonnytumach@gmail.com'])
+      );
+    }
+
+    // Validación de Producto
+    function isValidProduct(data) {
+      return data.keys().hasAll(['nombre', 'precio', 'categoria', 'imagen']) &&
+        data.keys().hasOnly(['nombre', 'precio', 'categoria', 'imagen', 'descripcion', 'ladrilloEquivalente', 'createdAt', 'updatedAt']) &&
+        data.nombre is string && data.nombre.size() > 0 && data.nombre.size() <= 150 &&
+        data.precio is number && data.precio >= 0 &&
+        data.categoria is string && data.categoria in ['combos', 'ladrillos', 'aridos', 'otros'] &&
+        data.imagen is string && data.imagen.size() > 0 && data.imagen.size() <= 1000 &&
+        (!('descripcion' in data) || (data.descripcion is string && data.descripcion.size() <= 500)) &&
+        (!('ladrilloEquivalente' in data) || (data.ladrilloEquivalente is number && data.ladrilloEquivalente >= 0)) &&
+        (!('createdAt' in data) || data.createdAt is timestamp) &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    // Validación de Pedido
+    function isValidPedido(data) {
+      return data.keys().hasAll(['items', 'total', 'createdAt']) &&
+        data.keys().hasOnly(['items', 'subtotal', 'costoEnvio', 'total', 'clienteNombre', 'clienteTelefono', 'clienteDireccion', 'tipoDestino', 'departamento', 'localidad', 'direccion', 'referencia', 'zonaEnvio', 'estado', 'numeroPedido', 'codigoPedido', 'envioACoordinar', 'revisionRequerida', 'motivoRevision', 'totalCalculadoOficial', 'totalReportadoPorCliente', 'createdAt', 'updatedAt']) &&
+        data.items is list && data.items.size() > 0 && data.items.size() <= 100 &&
+        data.total is number && data.total >= 0 &&
+        (!('subtotal' in data) || (data.subtotal is number && data.subtotal >= 0)) &&
+        (!('costoEnvio' in data) || (data.costoEnvio is number && data.costoEnvio >= 0)) &&
+        (!('envioACoordinar' in data) || data.envioACoordinar is bool) &&
+        (!('revisionRequerida' in data) || data.revisionRequerida is bool) &&
+        (!('motivoRevision' in data) || (data.motivoRevision is string && data.motivoRevision.size() <= 500)) &&
+        (!('totalCalculadoOficial' in data) || (data.totalCalculadoOficial is number && data.totalCalculadoOficial >= 0)) &&
+        (!('totalReportadoPorCliente' in data) || (data.totalReportadoPorCliente is number && data.totalReportadoPorCliente >= 0)) &&
+        (!('clienteNombre' in data) || (data.clienteNombre is string && data.clienteNombre.size() >= 2 && data.clienteNombre.size() <= 100)) &&
+        (!('clienteTelefono' in data) || (data.clienteTelefono is string && data.clienteTelefono.size() >= 6 && data.clienteTelefono.size() <= 50)) &&
+        (!('clienteDireccion' in data) || (data.clienteDireccion is string && data.clienteDireccion.size() >= 3 && data.clienteDireccion.size() <= 300)) &&
+        (!('tipoDestino' in data) || (data.tipoDestino is string && data.tipoDestino.size() <= 50)) &&
+        (!('departamento' in data) || (data.departamento is string && data.departamento.size() <= 100)) &&
+        (!('localidad' in data) || (data.localidad is string && data.localidad.size() <= 100)) &&
+        (!('direccion' in data) || (data.direccion is string && data.direccion.size() <= 200)) &&
+        (!('referencia' in data) || (data.referencia is string && data.referencia.size() <= 300)) &&
+        (!('zonaEnvio' in data) || (data.zonaEnvio is string && data.zonaEnvio.size() <= 100)) &&
+        (!('numeroPedido' in data) || (data.numeroPedido is number && data.numeroPedido > 0)) &&
+        (!('codigoPedido' in data) || (data.codigoPedido is string && data.codigoPedido.size() >= 5 && data.codigoPedido.size() <= 30)) &&
+        (!('estado' in data) || (data.estado is string && data.estado in ['pendiente', 'confirmado', 'preparando', 'enviado', 'entregado', 'cancelado', 'en_camino', 'completado'])) &&
+        data.createdAt is timestamp &&
+        data.createdAt == request.time &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    // Colección: Productos
+    // Cualquiera puede leer, solo el administrador con email específico puede crear/editar/borrar
+    match /productos/{productoId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidId(productoId) && isValidProduct(incoming());
+      allow update: if isAdmin() && isValidId(productoId) && isValidProduct(incoming());
+      allow delete: if isAdmin() && isValidId(productoId);
+    }
+
+    // Validación de Contador de Pedidos
+    function isValidContadorCreate(data) {
+      return data.keys().hasOnly(['ultimoNumero', 'updatedAt', 'createdAt']) &&
+        data.ultimoNumero is number &&
+        data.ultimoNumero > 0 &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp) &&
+        (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    // Colección: Contadores (secuencia atómica gestionada en Cloud Functions / Admin SDK)
+    // El cliente solo puede consultar lectura si es necesario; las mutaciones son exclusivas de administrador o Admin SDK
+    match /contadores/{contadorId} {
+      allow read: if contadorId == 'pedidos';
+      allow create, update, delete: if isAdmin() && contadorId == 'pedidos';
+    }
+
+    // Colección: Pedidos
+    // Creación cliente deshabilitada: los pedidos se validan y crean exclusivamente a través de la función serverless (crear-pedido.mjs) con el SDK Admin.
+    // Solo administradores autorizados con Custom Claim { admin: true } pueden consultar o gestionar pedidos.
+    match /pedidos/{pedidoId} {
+      allow create: if false;
+      allow get, list: if isAdmin();
+      allow update: if isAdmin() && isValidId(pedidoId) && isValidPedido(incoming());
+      allow delete: if isAdmin() && isValidId(pedidoId);
+    }
+  }
+}
+

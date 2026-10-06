@@ -1,0 +1,24 @@
+# Dependencias
+node_modules/
+package-lock.json
+bun.lock
+
+# Secretos y credenciales de Firebase / Cloud
+service-account.json
+*.pem
+*.key
+.env
+.env.local
+.env.*.local
+
+# Logs y temporales
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+
+# Build y caché
+.netlify/
+dist/
+.cache/

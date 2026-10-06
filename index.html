@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Alfa Materiales de Construcción - Eldorado</title>
     <meta name="description" content="Venta de materiales de construcción en Eldorado. Ladrillos, áridos, aglomerantes y todo lo que necesitas para tu obra al mejor precio.">
+    <meta property="og:title" content="Alfa Materiales de Construcción - Eldorado">
+    <meta property="og:description" content="Venta de materiales de construcción en Eldorado. Ladrillos, áridos, aglomerantes y todo lo que necesitas para tu obra al mejor precio.">
     <link rel="canonical" href="https://alfa-materiales-eldorado.netlify.app/">
     <meta name="robots" content="index, follow">
     <link rel="icon" type="image/png" sizes="32x32" href="fotos/favicon-32.png">
@@ -21,24 +23,30 @@
                 <h1 class="logo">Alfa Materiales</h1>
             </header>
             <nav>
-                <ul>
+                <ul id="menu-categorias-lista">
                     <li>
-                        <button class="boton-menu boton-categoria active"><i class="bi bi-hand-index"></i>Todos los productos</button>
+                        <button class="boton-menu boton-categoria active" data-categoria="todos"><i class="bi bi-hand-index"></i>Todos los productos</button>
                     </li>
                     <li>
-                        <button class="boton-menu boton-categoria">Ladrillos</button>
+                        <button class="boton-menu boton-categoria" data-categoria="combos">Combos</button>
                     </li>
                     <li>
-                        <button class="boton-menu boton-categoria">Áridos y Aglomerantes</button>
+                        <button class="boton-menu boton-categoria" data-categoria="ladrillos">Ladrillos</button>
                     </li>
                     <li>
-                        <button class="boton-menu boton-categoria">Otros</button>
+                        <button class="boton-menu boton-categoria" data-categoria="aridos">Áridos y Aglomerantes</button>
+                    </li>
+                    <li>
+                        <button class="boton-menu boton-categoria" data-categoria="otros">Otros</button>
                     </li>
                     <li>
                         <a class="boton-menu boton-carrito" href="carrito.html"><i class="bi bi-cart"></i>Carrito<span class="numerito">0</span></a>
                     </li>
                     <li>
                         <a class="boton-menu boton-contacto" href="contacto.html"><i class="bi bi-geo-alt"></i>Contacto</a>
+                    </li>
+                    <li>
+                        <a class="boton-menu boton-admin" href="admin.html"><i class="bi bi-shield-lock"></i>Administración</a>
                     </li>
                 </ul>
             </nav>
@@ -54,6 +62,6 @@
             <div class="contenedor-productos"></div>
         </main>
     </div>
-    <script src="script.js"></script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>
